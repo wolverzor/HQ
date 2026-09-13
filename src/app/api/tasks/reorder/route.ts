@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { DEMO_USER_ID } from "@/lib/constants";
+import { getUserId, unauthorized } from "@/lib/session";
 import { reorderTasksSchema } from "@/lib/validation";
 
 export async function POST(req: NextRequest) {
+  const userId = await getUserId();
+  if (!userId) return unauthorized();
+
   const body = await req.json();
   const parsed = reorderTasksSchema.safeParse(body);
   if (!parsed.success) {
@@ -13,7 +16,7 @@ export async function POST(req: NextRequest) {
   await prisma.$transaction(
     parsed.data.items.map((item) =>
       prisma.task.updateMany({
-        where: { id: item.id, userId: DEMO_USER_ID },
+        where: { id: item.id, userId },
         data: { order: item.order },
       }),
     ),

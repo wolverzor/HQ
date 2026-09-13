@@ -3,17 +3,20 @@
 Your personal headquarters — a calm, fast home for tasks, time-blocking, and
 finance opportunities, in one app.
 
-This is **V1**: a home dashboard, task manager, time-blocking calendar, and a
-finance opportunity tracker with a company watchlist and a working
-discovery/verification flow. It's a single-user app (no login) designed to be
-installed as a PWA on desktop and mobile.
+A home dashboard, task manager, time-blocking calendar, and a finance
+opportunity tracker with a company watchlist and a working
+discovery/verification flow. Accounts sign in with **Google** or
+**email + password**, every account's data is private to it, and the app is
+installable as a PWA on desktop and mobile.
 
 ## Stack
 
 - **Next.js 16** (App Router, Turbopack) + **React 19** + **TypeScript**
 - **Tailwind CSS v4** for styling, hand-built UI primitives on **Radix UI**
-- **Prisma** ORM — **SQLite** for local dev (zero setup), swappable to
-  **Postgres** for production (see [Deploying to Vercel](#deploying-to-vercel))
+- **Prisma** ORM on **Postgres** — locally via `prisma dev`, in production
+  via [Neon](https://neon.tech) (or any Postgres)
+- **Better Auth** for sign-in (Google OAuth + email/password, database
+  sessions)
 - **TanStack Query** for client-side data fetching, caching and optimistic
   updates
 - **dnd-kit** for drag-and-drop (task reordering, dragging tasks onto the
@@ -22,32 +25,42 @@ installed as a PWA on desktop and mobile.
 - A minimal hand-written **service worker** + Next.js `manifest.ts` for PWA
   installability (no `next-pwa` dependency)
 
-## Getting started
+## Getting started (local)
 
 ```bash
 npm install
-npm run db:migrate   # creates prisma/dev.db and applies the schema
-npm run db:seed      # loads realistic demo data
+npx prisma dev -n hq -d      # starts a local Postgres in the background, prints its URL
+cp .env.example .env         # then paste that URL into DATABASE_URL / DATABASE_URL_UNPOOLED
+npx prisma migrate deploy    # applies the schema
+npm run db:seed              # demo account + realistic demo data
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The app is seeded with
-example tasks, time blocks, and finance opportunities so you can see how
-everything connects immediately.
+Open [http://localhost:3000](http://localhost:3000) and sign in with the demo
+account — **demo@hq.local** / **hq-demo-password** — or create your own
+account (new accounts start empty, with the default company watchlist).
+
+Set `BETTER_AUTH_SECRET` in `.env` to any long random string. Google sign-in
+stays disabled (the button says so) until `GOOGLE_CLIENT_ID` and
+`GOOGLE_CLIENT_SECRET` are set — see [Google sign-in](#google-sign-in).
 
 Other useful scripts:
 
 ```bash
 npm run build       # production build (also runs prisma generate + migrate deploy)
-npm run lint         # ESLint
-npm run db:studio    # Prisma Studio — browse/edit the local database
+npm run lint        # ESLint
+npm run db:studio   # Prisma Studio — browse/edit the database
 ```
+
+The seed script wipes the database first, so it refuses to run against
+anything but a localhost database.
 
 ## Data model
 
 See [`prisma/schema.prisma`](prisma/schema.prisma). Core entities:
 
-- **User** — single seeded user for V1 (no auth yet)
+- **User / Session / Account / Verification** — Better Auth's tables. An
+  `Account` row is either a Google login or a hashed password.
 - **Project** — lightweight optional grouping for tasks
 - **Task** — title (only required field), description, deadline, priority,
   category, estimated duration, status, optional project, optional linked
@@ -59,12 +72,19 @@ See [`prisma/schema.prisma`](prisma/schema.prisma). Core entities:
 - **Opportunity** — a tracked finance programme, with separate `status`
   (your application pipeline) and `verificationStatus` (how sure HQ is that
   it's real) fields, plus `source`/`sourceUrl`/`officialUrl`/`lastVerifiedAt`
-- **CheckRun** — a log entry for each "Check opportunities" run against a
-  company, so scheduled automatic checks can be layered on later without
-  changing the data model
+- **CheckRun** — a log entry for each discovery check against a company
+
+Every row belongs to a user. API routes read the user from the session
+([`src/lib/session.ts`](src/lib/session.ts)), scope every query by it, and
+check that any linked id in a request body (project, task, opportunity,
+company) belongs to the same user.
 
 ## How the pieces connect
 
+- **Auth**: [`src/proxy.ts`](src/proxy.ts) sends visitors without a session
+  cookie to `/login`; [`src/app/(app)/layout.tsx`](<src/app/(app)/layout.tsx>)
+  validates the session for real before rendering any page, and every API
+  route returns 401 without one.
 - Dragging a task onto the calendar creates a **linked** `TimeBlock`
   (`TimeBlock.taskId`). Completing that block marks the task done.
 - Clicking **Start Application** on an opportunity sets its status to
@@ -78,78 +98,80 @@ See [`prisma/schema.prisma`](prisma/schema.prisma). Core entities:
   recorded as new opportunities tagged **Needs Verification** — HQ never
   invents a deadline, opening date, or marks something **Confirmed Open** on
   its own. See [`src/lib/discovery.ts`](src/lib/discovery.ts).
-- The seed data ships with a broad default watchlist (~40 companies) spanning
-  investment banking, private equity, asset management, and sales & trading /
-  hedge funds / quant, so discovery isn't limited to firms you add yourself.
+- Every new account starts with a broad default watchlist (~50 companies)
+  spanning investment banking, private equity, asset management, and sales &
+  trading / hedge funds / quant — see
+  [`src/lib/default-watchlist.ts`](src/lib/default-watchlist.ts).
 
 ## Deploying to Vercel
 
-The app deploys like any standard Next.js app, **with one required change**:
-SQLite's `dev.db` file lives on the local filesystem, which Vercel's
-serverless functions don't persist between requests. Before deploying, switch
-the datasource to a hosted Postgres database (both have generous free tiers):
+1. **Push this repo to GitHub** and import it at
+   [vercel.com/new](https://vercel.com/new) (framework: Next.js — no build
+   settings to change). The first build will fail until steps 2–3 are done;
+   that's expected.
+2. **Database**: in the Vercel project, open **Storage → Create Database →
+   Neon (Postgres)** and connect it to the project. This sets
+   `DATABASE_URL` and `DATABASE_URL_UNPOOLED` automatically. (Using another
+   Postgres host? Set both variables yourself — the same URL is fine if it
+   isn't pooled.)
+3. **Environment variables** (Settings → Environment Variables):
+   - `BETTER_AUTH_SECRET` — a long random string (`openssl rand -base64 32`)
+   - `CRON_SECRET` — another long random string
+   - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — optional, see below
+   - `BETTER_AUTH_URL` — only needed with a custom domain (the
+     `*.vercel.app` production URL is detected automatically)
+4. **Redeploy**. The build runs `prisma migrate deploy`, creating the tables.
+5. Open the site and **Create an account**.
 
-1. Create a database — [Neon](https://neon.tech) or
-   [Vercel Postgres](https://vercel.com/storage/postgres) both work.
-2. In [`prisma/schema.prisma`](prisma/schema.prisma), change:
-   ```prisma
-   datasource db {
-     provider = "sqlite"
-     url      = env("DATABASE_URL")
-   }
-   ```
-   to:
-   ```prisma
-   datasource db {
-     provider = "postgresql"
-     url      = env("DATABASE_URL")
-   }
-   ```
-3. Delete the `prisma/migrations` folder (SQLite and Postgres migrations
-   aren't compatible) and run `npx prisma migrate dev --name init` once
-   locally against the new `DATABASE_URL` to generate fresh Postgres
-   migrations — commit the new `prisma/migrations` folder.
-4. In your Vercel project settings, add a `DATABASE_URL` environment
-   variable pointing at your Postgres database.
-5. Push to your Git provider and import the repo in Vercel — it will run
-   `npm run build`, which runs `prisma generate && prisma migrate deploy`
-   automatically before building.
-6. Run `npm run db:seed` once against the production `DATABASE_URL` (locally,
-   with `DATABASE_URL` set in your shell) if you want the same demo data live.
+The production database starts empty — there's no demo data there, and you
+shouldn't run the seed against it.
 
-Everything else — the PWA manifest, icons, and service worker — works out of
-the box on Vercel with no extra configuration.
+### Google sign-in
+
+1. Go to [Google Cloud Console → APIs & Services](https://console.cloud.google.com/apis/credentials),
+   create (or pick) a project, and configure the **OAuth consent screen**
+   (External; add your own Google account as a test user, or publish it).
+2. **Credentials → Create credentials → OAuth client ID → Web application**:
+   - Authorised JavaScript origin: `https://<your-app>.vercel.app`
+   - Authorised redirect URI: `https://<your-app>.vercel.app/api/auth/callback/google`
+   - (For local testing, also add `http://localhost:3000` and
+     `http://localhost:3000/api/auth/callback/google`.)
+3. Put the client ID and secret into `GOOGLE_CLIENT_ID` /
+   `GOOGLE_CLIENT_SECRET` on Vercel and redeploy.
+
+Signing in with Google using the same email as an existing password account
+links the two rather than creating a duplicate.
 
 ## Automatic hourly opportunity checks
 
-[`vercel.json`](vercel.json) defines a Vercel Cron job that hits
-`/api/cron/check-all` once an hour, which runs the same discovery check
-described above against every enabled watchlist company. This starts working
-automatically the moment the project is deployed to Vercel — no extra setup
-beyond deploying — but you should still add one environment variable so the
-endpoint can't be triggered by anyone else who finds the URL:
+`/api/cron/check-all` runs the discovery check for every account's enabled
+watchlist companies (each careers page is fetched once per run, however many
+accounts watch it). In production it only runs with
+`Authorization: Bearer <CRON_SECRET>`.
 
-1. In your Vercel project settings, add a `CRON_SECRET` environment variable
-   set to any long random string (e.g. `openssl rand -hex 32`).
-2. Vercel automatically sends that value as an `Authorization: Bearer
-   <CRON_SECRET>` header on every cron invocation — the route checks it
-   matches before running. Without `CRON_SECRET` set, the endpoint runs
-   unauthenticated (fine for local testing, not for production).
+Two things call it:
 
-Cron jobs only run once a project is deployed — there's no way to get a true
-"every hour, even when your laptop is off" schedule without a deployment.
-Locally (or any time before you deploy), use the **Check all now** button on
-the Watchlist tab to run the same check on demand.
+- **GitHub Actions, hourly** —
+  [`.github/workflows/hourly-discovery.yml`](.github/workflows/hourly-discovery.yml).
+  Vercel's free Hobby plan only allows once-a-day cron jobs, so the hourly
+  schedule lives here. Add two repository secrets (GitHub → Settings →
+  Secrets and variables → Actions): `APP_URL` (e.g.
+  `https://hq-yourname.vercel.app`) and `CRON_SECRET` (same value as on
+  Vercel). Until they're set the workflow skips itself. GitHub may delay
+  scheduled runs by a few minutes at busy times.
+- **Vercel Cron, daily** — [`vercel.json`](vercel.json), as a backstop. On a
+  Vercel Pro plan you can change its schedule to `0 * * * *` and drop the
+  GitHub workflow.
+
+Any time, **Check all now** on the Watchlist tab runs the same check for your
+account on demand.
 
 **On the scope of "discovery":** this checks a curated list of company
-careers pages (see [`prisma/seed.ts`](prisma/seed.ts) for the ~40 seeded
-firms, or add your own) for keyword mentions — it does not crawl the open
-web to find companies you haven't listed. Genuinely open-ended web discovery
-("find every finance internship on the internet") would need a search API
-(Google Programmable Search, Bing Web Search, SerpAPI, etc.), which needs an
-API key and a billing account that only you can set up. If you want that
-wired in, get an API key from one of those and it's a small, additive change
-to `src/lib/discovery.ts` — happy to build it once you have one.
+careers pages for keyword mentions — it does not crawl the open web to find
+companies you haven't listed. Genuinely open-ended web discovery would need
+a search API (Google Programmable Search, Bing Web Search, SerpAPI, etc.),
+which needs an API key and a billing account that only you can set up. It's
+a small, additive change to `src/lib/discovery.ts` once you have one.
 
 ## What's next
 

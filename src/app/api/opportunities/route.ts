@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { DEMO_USER_ID } from "@/lib/constants";
+import { getUserId, notFoundReference, ownsReferences, unauthorized } from "@/lib/session";
 import { createOpportunitySchema } from "@/lib/validation";
 
 export async function GET() {
+  const userId = await getUserId();
+  if (!userId) return unauthorized();
+
   const opportunities = await prisma.opportunity.findMany({
-    where: { userId: DEMO_USER_ID },
+    where: { userId },
     orderBy: [{ deadline: "asc" }, { createdAt: "desc" }],
     include: { _count: { select: { tasks: true } } },
   });
@@ -15,6 +18,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const userId = await getUserId();
+  if (!userId) return unauthorized();
+
   const body = await req.json();
   const parsed = createOpportunitySchema.safeParse(body);
   if (!parsed.success) {
@@ -22,6 +28,8 @@ export async function POST(req: NextRequest) {
   }
 
   const d = parsed.data;
+  if (!(await ownsReferences(userId, d))) return notFoundReference();
+
   const opportunity = await prisma.opportunity.create({
     data: {
       companyId: d.companyId ?? undefined,
@@ -40,7 +48,7 @@ export async function POST(req: NextRequest) {
       sourceUrl: d.sourceUrl ?? undefined,
       officialUrl: d.officialUrl ?? undefined,
       verificationStatus: d.verificationStatus,
-      userId: DEMO_USER_ID,
+      userId,
     },
   });
 

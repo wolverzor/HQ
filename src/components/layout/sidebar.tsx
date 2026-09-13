@@ -6,9 +6,10 @@ import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "./nav-items";
 import { ThemeToggle } from "./theme-toggle";
+import { UserMenu, type ShellUser } from "./user-menu";
 import { useQuickAdd } from "@/components/tasks/quick-add-context";
 
-export function Sidebar() {
+export function Sidebar({ user }: { user: ShellUser }) {
   const pathname = usePathname();
   const { open } = useQuickAdd();
 
@@ -58,9 +59,9 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="mt-auto flex items-center justify-between px-2 pt-4">
-        <span className="text-xs text-subtle-foreground">V1</span>
-        <ThemeToggle />
+      <div className="mt-auto flex items-center gap-1 pt-4">
+        <UserMenu user={user} />
+        <ThemeToggle className="shrink-0" />
       </div>
     </aside>
   );

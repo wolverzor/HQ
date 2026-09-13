@@ -4,6 +4,24 @@ _Last updated: 2026-09-13_
 
 ## Completed (V1)
 
+**Accounts & deployment readiness**
+- Sign in with **Google** or **email + password** (Better Auth, database
+  sessions, 30-day sessions). Google is only enabled once OAuth credentials
+  are configured; until then the login page says so rather than showing a
+  button that fails
+- Styled `/login` page with sign-in / create-account modes, inline errors,
+  and a safe `?next=` redirect back to the page you came from
+- Account menu (sidebar on desktop, avatar on mobile) with sign-out, which
+  also clears cached query data and the service-worker cache
+- Every row is owned by a user: all API routes scope by the session user,
+  return 401 without a session, and reject linking another user's
+  project/task/opportunity/company (verified with two accounts)
+- New accounts start with the ~50-company default watchlist
+- Postgres everywhere (local `prisma dev`, Neon in production), with a
+  committed Postgres migration applied automatically on deploy
+- Scheduled discovery runs across all accounts, fetching each careers page
+  once per run; hourly via GitHub Actions, daily via Vercel Cron
+
 **Shell & design**
 - Responsive app shell: desktop sidebar nav, mobile bottom nav with a
   floating quick-add button, mobile top bar
@@ -59,10 +77,11 @@ _Last updated: 2026-09-13_
   appears in the task list and calendar side panel
 
 **Opportunity discovery**
-- Company watchlist: add/remove, enable/disable monitoring, seeded with a
-  broad default list of ~40 major employers across investment banking,
-  private equity, asset management, and sales & trading / hedge funds /
-  quant (see `prisma/seed.ts`) — not limited to companies you add yourself
+- Company watchlist: add/remove, enable/disable monitoring, pre-filled for
+  every new account with a broad default list of ~50 major employers across
+  investment banking, private equity, asset management, and sales & trading
+  / hedge funds / quant (see `src/lib/default-watchlist.ts`) — not limited
+  to companies you add yourself
 - **Check** (per company) and **Check all now** (every enabled company):
   a real fetch of the careers page, scanned for relevant keywords (spring
   week, insight programme/day, first-year/off-cycle internship, summer
@@ -73,18 +92,19 @@ _Last updated: 2026-09-13_
   still surfaced but flagged in their notes as normally penultimate-year
   only, since that can't be told apart from a first-year programme by
   keyword matching alone (see below)
-- **Automatic hourly checks in production**: `vercel.json` configures a
-  Vercel Cron job hitting `/api/cron/check-all` every hour, protected by an
-  optional `CRON_SECRET`. This runs for real once deployed to Vercel; there
-  is no way to run a true background hourly job before that (see README)
+- **Automatic hourly checks in production**: a GitHub Actions workflow calls
+  `/api/cron/check-all` every hour (Vercel's Hobby plan only allows daily
+  cron, which `vercel.json` keeps as a backstop). The endpoint requires
+  `CRON_SECRET` in production (see README)
 - `CheckRun` log per company (start/finish time, success, message, match
   count)
 
 **Data & demo data**
-- Prisma schema covering User, Project, Task, TimeBlock, Company,
-  Opportunity, CheckRun — SQLite for local dev, documented one-step swap to
-  Postgres for deployment (see README)
-- Seed script with realistic tasks, time blocks, companies and opportunities
+- Prisma schema covering the auth tables plus Project, Task, TimeBlock,
+  Company, Opportunity, CheckRun — on Postgres
+- Local-only seed script (refuses non-localhost databases) with a demo
+  account (`demo@hq.local` / `hq-demo-password`) and realistic tasks, time
+  blocks, companies and opportunities
 
 ## Current
 
@@ -94,17 +114,26 @@ including a real end-to-end discovery check against a live careers page.
 
 ## Known issues
 
-- **SQLite won't persist on Vercel** — must switch `prisma/schema.prisma`'s
-  datasource to Postgres before deploying (documented step-by-step in
-  `README.md`). This is the one required step before going live.
+- **Not deployed yet** — needs a Vercel account, a Neon database and env vars
+  set up by you (step-by-step in `README.md`). Google sign-in additionally
+  needs an OAuth client from Google Cloud Console.
+- **No password reset or email verification** — both need an email-sending
+  service (e.g. Resend) and API key. Until then a forgotten password can't
+  be recovered from the app; signing in with Google avoids that.
+- Hourly checks depend on GitHub Actions scheduled runs, which GitHub can
+  delay by a few minutes under load (or on a Vercel Pro plan, switch
+  `vercel.json` to hourly instead).
+- Locally, `prisma dev`'s Postgres needs `pgbouncer=true&connection_limit=1`
+  on `DATABASE_URL` (already in `.env.example`) or queries fail with
+  "prepared statement already exists".
 - The opportunity discovery keyword scan is intentionally simple (plain-text
   keyword matching, no structured parsing) so it stays honest and doesn't
   silently misreport dates. Some careers pages block automated requests or
   render entirely client-side (JS-rendered content won't appear in the
   fetched HTML) — those show up as a failed/empty check rather than a false
   positive, by design.
-- Discovery only covers the companies on your watchlist (~40 seeded, plus any
-  you add) — it does not crawl the open web for firms you haven't listed.
+- Discovery only covers the companies on your watchlist (~50 by default, plus
+  any you add) — it does not crawl the open web for firms you haven't listed.
   True open-ended discovery needs a search API (Google Programmable Search /
   Bing / SerpAPI), which needs an API key only you can obtain — see README.
 - "First-year eligible" is inferred from programme-type keywords (Spring
@@ -114,9 +143,6 @@ including a real end-to-end discovery check against a live careers page.
   flagged as normally penultimate-year-only in their notes, since summer
   programmes and first-year programmes aren't reliably distinguishable from
   page text alone.
-- The hourly cron only executes once the project is deployed to Vercel with
-  the cron job registered — there's no local/background equivalent while the
-  app isn't deployed, beyond manually clicking "Check all now".
 - A handful of `eslint-disable` comments remain in dialog components and the
   calendar, for the (very new, quite aggressive) `react-hooks/set-state-in-
   effect` rule flagging standard "reset a form when a dialog opens" and
@@ -130,14 +156,13 @@ including a real end-to-end discovery check against a live careers page.
 Per the brief, none of these are in V1: Gmail integration, AI assistant /
 brain dump / scheduling, psychometric tracker, finance learning tracker,
 university coursework system, interview preparation tools, cover-letter
-generator, finance news, complex notifications, multi-user auth, and any
-broader "HQ" modules beyond the four covered here.
+generator, finance news, complex notifications, and any broader "HQ"
+modules beyond the four covered here.
 
 Natural next steps when V1 is ready to grow:
+- Password reset + email verification (needs an email provider API key)
 - Real, open-web opportunity discovery via a search API (Google Programmable
   Search / Bing / SerpAPI) instead of a curated watchlist — needs an API key
-- Real auth (the whole app is scoped through a single `DEMO_USER_ID`
-  constant, so adding multi-user support is additive, not a rewrite)
 - Richer opportunity discovery (structured parsing per known career-site
   platforms, still verification-gated) and LLM-assisted eligibility
   classification (year-of-study, graduation year) — would reintroduce "AI"

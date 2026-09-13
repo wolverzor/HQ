@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { DEMO_USER_ID } from "@/lib/constants";
+import { getUserId, notFoundReference, ownsReferences, unauthorized } from "@/lib/session";
 import { updateTaskSchema } from "@/lib/validation";
 
 const taskInclude = {
@@ -12,6 +12,9 @@ const taskInclude = {
 type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: NextRequest, { params }: Params) {
+  const userId = await getUserId();
+  if (!userId) return unauthorized();
+
   const { id } = await params;
   const body = await req.json();
   const parsed = updateTaskSchema.safeParse(body);
@@ -19,12 +22,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const existing = await prisma.task.findFirst({ where: { id, userId: DEMO_USER_ID } });
+  const existing = await prisma.task.findFirst({ where: { id, userId } });
   if (!existing) {
     return NextResponse.json({ error: "Task not found" }, { status: 404 });
   }
 
   const d = parsed.data;
+  if (!(await ownsReferences(userId, d))) return notFoundReference();
+
   const isCompleting = d.status === "DONE" && existing.status !== "DONE";
   const isReopening = d.status && d.status !== "DONE" && existing.status === "DONE";
 
@@ -51,8 +56,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
+  const userId = await getUserId();
+  if (!userId) return unauthorized();
+
   const { id } = await params;
-  const existing = await prisma.task.findFirst({ where: { id, userId: DEMO_USER_ID } });
+  const existing = await prisma.task.findFirst({ where: { id, userId } });
   if (!existing) {
     return NextResponse.json({ error: "Task not found" }, { status: 404 });
   }

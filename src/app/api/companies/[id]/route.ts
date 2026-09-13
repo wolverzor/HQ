@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { DEMO_USER_ID } from "@/lib/constants";
+import { getUserId, unauthorized } from "@/lib/session";
 import { updateCompanySchema } from "@/lib/validation";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: NextRequest, { params }: Params) {
+  const userId = await getUserId();
+  if (!userId) return unauthorized();
+
   const { id } = await params;
   const body = await req.json();
   const parsed = updateCompanySchema.safeParse(body);
@@ -13,7 +16,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const existing = await prisma.company.findFirst({ where: { id, userId: DEMO_USER_ID } });
+  const existing = await prisma.company.findFirst({ where: { id, userId } });
   if (!existing) {
     return NextResponse.json({ error: "Company not found" }, { status: 404 });
   }
@@ -34,8 +37,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
+  const userId = await getUserId();
+  if (!userId) return unauthorized();
+
   const { id } = await params;
-  const existing = await prisma.company.findFirst({ where: { id, userId: DEMO_USER_ID } });
+  const existing = await prisma.company.findFirst({ where: { id, userId } });
   if (!existing) {
     return NextResponse.json({ error: "Company not found" }, { status: 404 });
   }

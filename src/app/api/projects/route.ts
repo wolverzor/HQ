@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { DEMO_USER_ID } from "@/lib/constants";
+import { getUserId, unauthorized } from "@/lib/session";
 import { createProjectSchema } from "@/lib/validation";
 
 export async function GET() {
+  const userId = await getUserId();
+  if (!userId) return unauthorized();
+
   const projects = await prisma.project.findMany({
-    where: { userId: DEMO_USER_ID, archived: false },
+    where: { userId, archived: false },
     orderBy: { createdAt: "asc" },
   });
   return NextResponse.json(projects);
 }
 
 export async function POST(req: NextRequest) {
+  const userId = await getUserId();
+  if (!userId) return unauthorized();
+
   const body = await req.json();
   const parsed = createProjectSchema.safeParse(body);
   if (!parsed.success) {
@@ -22,7 +28,7 @@ export async function POST(req: NextRequest) {
     data: {
       name: parsed.data.name,
       color: parsed.data.color ?? "#6366f1",
-      userId: DEMO_USER_ID,
+      userId,
     },
   });
 

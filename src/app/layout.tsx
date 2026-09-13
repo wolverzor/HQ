@@ -3,7 +3,6 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { QueryProvider } from "@/components/providers/query-provider";
-import { AppShell } from "@/components/layout/app-shell";
 import { Toaster } from "sonner";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
 
@@ -16,7 +15,6 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "HQ",
   description: "Your personal headquarters — tasks, time-blocking and finance opportunities in one place.",
-  manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -44,7 +42,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <QueryProvider>
-            <AppShell>{children}</AppShell>
+            {children}
             <Toaster position="bottom-right" richColors closeButton />
             <ServiceWorkerRegister />
           </QueryProvider>

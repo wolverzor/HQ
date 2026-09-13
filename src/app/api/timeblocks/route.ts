@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { DEMO_USER_ID } from "@/lib/constants";
+import { getUserId, notFoundReference, ownsReferences, unauthorized } from "@/lib/session";
 import { createTimeBlockSchema } from "@/lib/validation";
 
 const blockInclude = {
@@ -8,13 +8,16 @@ const blockInclude = {
 } as const;
 
 export async function GET(req: NextRequest) {
+  const userId = await getUserId();
+  if (!userId) return unauthorized();
+
   const { searchParams } = new URL(req.url);
   const start = searchParams.get("start");
   const end = searchParams.get("end");
 
   const blocks = await prisma.timeBlock.findMany({
     where: {
-      userId: DEMO_USER_ID,
+      userId,
       ...(start && end
         ? { start: { gte: new Date(start) }, end: { lte: new Date(end) } }
         : {}),
@@ -27,6 +30,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const userId = await getUserId();
+  if (!userId) return unauthorized();
+
   const body = await req.json();
   const parsed = createTimeBlockSchema.safeParse(body);
   if (!parsed.success) {
@@ -38,12 +44,7 @@ export async function POST(req: NextRequest) {
   if (end <= start) {
     return NextResponse.json({ error: "End time must be after start time" }, { status: 400 });
   }
-
-  const color = parsed.data.color;
-  if (!color && parsed.data.taskId) {
-    const task = await prisma.task.findFirst({ where: { id: parsed.data.taskId, userId: DEMO_USER_ID } });
-    if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
-  }
+  if (!(await ownsReferences(userId, parsed.data))) return notFoundReference();
 
   const block = await prisma.timeBlock.create({
     data: {
@@ -51,9 +52,9 @@ export async function POST(req: NextRequest) {
       start,
       end,
       taskId: parsed.data.taskId ?? undefined,
-      color: color ?? "#6366f1",
+      color: parsed.data.color ?? "#6366f1",
       notes: parsed.data.notes ?? undefined,
-      userId: DEMO_USER_ID,
+      userId,
     },
     include: blockInclude,
   });

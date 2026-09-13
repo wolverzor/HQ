@@ -1,21 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runAllEnabledChecks } from "@/lib/discovery";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
-// Hit by Vercel Cron once an hour (see vercel.json) to check every enabled
-// watchlist company. Vercel automatically sends `Authorization: Bearer
-// <CRON_SECRET>` when a CRON_SECRET env var is configured on the project —
-// see https://vercel.com/docs/cron-jobs/manage-cron-jobs#securing-cron-jobs.
-// Without a CRON_SECRET set (e.g. local dev) the check runs unauthenticated,
-// which is fine for local testing but should always be set in production.
+// Scheduled discovery for every account's enabled watchlist companies.
+// Called hourly by .github/workflows/hourly-discovery.yml (and daily by
+// Vercel Cron as a backstop — see vercel.json). Both send
+// `Authorization: Bearer <CRON_SECRET>`. In production the secret is
+// mandatory; locally, with no CRON_SECRET set, it runs unauthenticated.
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (secret) {
-    const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${secret}`) {
+    if (req.headers.get("authorization") !== `Bearer ${secret}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+  } else if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "CRON_SECRET is not configured" }, { status: 401 });
   }
 
   const results = await runAllEnabledChecks();
@@ -25,6 +25,5 @@ export async function GET(req: NextRequest) {
     checkedAt: new Date().toISOString(),
     companiesChecked: results.length,
     totalMatches,
-    results,
   });
 }

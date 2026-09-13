@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { DEMO_USER_ID } from "@/lib/constants";
+import { getUserId, unauthorized } from "@/lib/session";
 import { createCompanySchema } from "@/lib/validation";
 
 export async function GET() {
+  const userId = await getUserId();
+  if (!userId) return unauthorized();
+
   const companies = await prisma.company.findMany({
-    where: { userId: DEMO_USER_ID },
+    where: { userId },
     orderBy: { createdAt: "asc" },
     include: {
       _count: { select: { opportunities: true } },
@@ -29,6 +32,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const userId = await getUserId();
+  if (!userId) return unauthorized();
+
   const body = await req.json();
   const parsed = createCompanySchema.safeParse(body);
   if (!parsed.success) {
@@ -42,7 +48,7 @@ export async function POST(req: NextRequest) {
       careersUrl: parsed.data.careersUrl ?? undefined,
       notes: parsed.data.notes ?? undefined,
       enabled: parsed.data.enabled ?? true,
-      userId: DEMO_USER_ID,
+      userId,
     },
   });
 

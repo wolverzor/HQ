@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { DEMO_USER_ID } from "@/lib/constants";
+import { getUserId, unauthorized } from "@/lib/session";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -9,15 +9,18 @@ type Params = { params: Promise<{ id: string }> };
 // carried over, category set to Finance / Career) so it immediately shows up
 // in the task manager and can be dragged onto the calendar.
 export async function POST(_req: Request, { params }: Params) {
+  const userId = await getUserId();
+  if (!userId) return unauthorized();
+
   const { id } = await params;
 
-  const opportunity = await prisma.opportunity.findFirst({ where: { id, userId: DEMO_USER_ID } });
+  const opportunity = await prisma.opportunity.findFirst({ where: { id, userId } });
   if (!opportunity) {
     return NextResponse.json({ error: "Opportunity not found" }, { status: 404 });
   }
 
   const maxOrder = await prisma.task.aggregate({
-    where: { userId: DEMO_USER_ID },
+    where: { userId },
     _max: { order: true },
   });
 
@@ -36,7 +39,7 @@ export async function POST(_req: Request, { params }: Params) {
         category: "FINANCE_CAREER",
         estimatedMinutes: 60,
         opportunityId: opportunity.id,
-        userId: DEMO_USER_ID,
+        userId,
         order: (maxOrder._max.order ?? -1) + 1,
       },
     }),

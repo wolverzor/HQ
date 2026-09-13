@@ -1,14 +1,9 @@
-const CACHE_NAME = "hq-shell-v1";
-const SHELL_URLS = ["/", "/tasks", "/calendar", "/opportunities"];
+// Network-first service worker: pages load live, with the last good copy as
+// an offline fallback. Nothing auth-related or user-data-bearing is cached
+// (API routes, the login page, redirects), and sign-out clears the cache.
+const CACHE_NAME = "hq-shell-v2";
 
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches
-      .open(CACHE_NAME)
-      .then((cache) => cache.addAll(SHELL_URLS).catch(() => undefined))
-      .then(() => self.skipWaiting()),
-  );
-});
+self.addEventListener("install", () => self.skipWaiting());
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
@@ -24,16 +19,18 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
-  // Never cache API responses — data must always be fresh.
-  if (url.pathname.startsWith("/api/")) return;
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/login")) return;
 
   event.respondWith(
     fetch(request)
       .then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => undefined);
+        if (response.ok && !response.redirected && response.type === "basic") {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => undefined);
+        }
         return response;
       })
-      .catch(() => caches.match(request).then((cached) => cached || caches.match("/"))),
+      .catch(() => caches.match(request).then((cached) => cached || Response.error())),
   );
 });

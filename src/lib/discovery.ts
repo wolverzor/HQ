@@ -1,19 +1,17 @@
 import { prisma } from "@/lib/prisma";
-import { DEMO_USER_ID } from "@/lib/constants";
 import type { Division, ProgrammeType } from "@prisma/client";
 
 // -----------------------------------------------------------------------------
-// Opportunity discovery — V1 "manual check" implementation.
+// Opportunity discovery — honest keyword scan of watchlist careers pages.
 //
-// This performs a lightweight, honest keyword scan of a company's public
-// careers page. It never invents deadlines, opening dates, or application
-// links, and it never marks anything "Confirmed Open" — that verification
-// step is reserved for a human confirming details on the employer's own site
-// (see VerificationStatus in the schema). Its only job is to surface
-// candidates worth a human looking at, tagged "Needs Verification", so this
-// architecture (CheckRun log + verification status) can later be wired up to
-// a scheduled job without changing how results are recorded — see
-// src/app/api/cron/check-all/route.ts, which does exactly that, hourly.
+// This performs a lightweight keyword scan of a company's public careers
+// page. It never invents deadlines, opening dates, or application links, and
+// it never marks anything "Confirmed Open" — that verification step is
+// reserved for a human confirming details on the employer's own site (see
+// VerificationStatus in the schema). Its only job is to surface candidates
+// worth a human looking at, tagged "Needs Verification". The same code runs
+// for the manual "Check" buttons and the scheduled job
+// (src/app/api/cron/check-all/route.ts).
 //
 // A note on "first-year eligible": there is no reliable way to determine a
 // specific programme's year-of-study eligibility from a plain-text keyword
@@ -71,6 +69,11 @@ const DIVISION_KEYWORDS: { phrase: string; division: Division }[] = [
 
 const FETCH_TIMEOUT_MS = 8000;
 
+type PageFetch = { ok: true; text: string } | { ok: false; message: string };
+
+/** Shares one fetch per careers URL across a run (many accounts watch the same firms). */
+type PageCache = Map<string, Promise<PageFetch>>;
+
 function stripHtml(html: string): string {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
@@ -86,9 +89,34 @@ function titleCase(s: string) {
   return s.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export async function runCompanyCheck(companyId: string) {
+async function fetchCareersText(url: string): Promise<PageFetch> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; HQOpportunityBot/1.0)",
+        Accept: "text/html",
+      },
+    });
+    clearTimeout(timeout);
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: `Careers page responded with HTTP ${res.status}. It may block automated requests — check manually.`,
+      };
+    }
+    return { ok: true, text: stripHtml(await res.text()).toLowerCase() };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : "Unknown error";
+    return { ok: false, message: `Could not reach the careers page (${reason}). Check the URL, or verify manually.` };
+  }
+}
+
+export async function runCompanyCheck(companyId: string, userId: string, pageCache?: PageCache) {
   const company = await prisma.company.findFirst({
-    where: { id: companyId, userId: DEMO_USER_ID },
+    where: { id: companyId, userId },
   });
   if (!company) throw new Error("Company not found");
 
@@ -107,46 +135,20 @@ export async function runCompanyCheck(companyId: string) {
     });
   }
 
-  let text: string;
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    const res = await fetch(company.careersUrl, {
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; HQOpportunityBot/1.0; +https://example.com)",
-        Accept: "text/html",
-      },
-    });
-    clearTimeout(timeout);
-    if (!res.ok) {
-      return prisma.checkRun.create({
-        data: {
-          companyId,
-          startedAt,
-          finishedAt: new Date(),
-          success: false,
-          message: `Careers page responded with HTTP ${res.status}. It may block automated requests — check manually.`,
-          matchCount: 0,
-        },
-      });
-    }
-    const html = await res.text();
-    text = stripHtml(html).toLowerCase();
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : "Unknown error";
+  let pending = pageCache?.get(company.careersUrl);
+  if (!pending) {
+    pending = fetchCareersText(company.careersUrl);
+    pageCache?.set(company.careersUrl, pending);
+  }
+  const page = await pending;
+
+  if (!page.ok) {
     return prisma.checkRun.create({
-      data: {
-        companyId,
-        startedAt,
-        finishedAt: new Date(),
-        success: false,
-        message: `Could not reach the careers page (${reason}). Check the URL, or verify manually.`,
-        matchCount: 0,
-      },
+      data: { companyId, startedAt, finishedAt: new Date(), success: false, message: page.message, matchCount: 0 },
     });
   }
 
+  const text = page.text;
   const matchedTypes = TYPE_KEYWORDS.filter((k) => text.includes(k.phrase));
   const matchedDivisions = DIVISION_KEYWORDS.filter((k) => text.includes(k.phrase));
   const inferredDivision: Division = matchedDivisions[0]?.division ?? "OTHER";
@@ -155,7 +157,7 @@ export async function runCompanyCheck(companyId: string) {
   for (const match of matchedTypes) {
     const existing = await prisma.opportunity.findFirst({
       where: {
-        userId: DEMO_USER_ID,
+        userId,
         companyId,
         programme: { contains: titleCase(match.phrase) },
       },
@@ -177,7 +179,7 @@ export async function runCompanyCheck(companyId: string) {
 
       await prisma.opportunity.create({
         data: {
-          userId: DEMO_USER_ID,
+          userId,
           companyId,
           companyName: company.name,
           programme: `${titleCase(match.phrase)} (auto-detected)`,
@@ -211,20 +213,22 @@ export async function runCompanyCheck(companyId: string) {
   });
 }
 
-const CHECK_CONCURRENCY = 6;
+const CHECK_CONCURRENCY = 8;
 
 /**
- * Runs a check against every enabled, watched company for the demo user.
- * Used by both the manual "check all" action and the hourly cron job.
- * Runs with limited concurrency (rather than one-at-a-time or all-at-once)
- * so a watchlist of dozens of companies finishes in a few seconds instead of
- * minutes, and stays comfortably under a serverless function's time limit.
+ * Runs a check against every enabled watchlist company — for one user (the
+ * manual "Check all now" button) or for every user when `userId` is omitted
+ * (the scheduled job). Runs with bounded concurrency so dozens of companies
+ * finish in seconds and stay under a serverless function's time limit, and
+ * fetches each distinct careers URL only once per run.
  */
-export async function runAllEnabledChecks() {
+export async function runAllEnabledChecks(userId?: string) {
   const companies = await prisma.company.findMany({
-    where: { userId: DEMO_USER_ID, enabled: true, careersUrl: { not: null } },
+    where: { ...(userId && { userId }), enabled: true, careersUrl: { not: null } },
+    select: { id: true, name: true, userId: true },
   });
 
+  const pageCache: PageCache = new Map();
   const results: { companyId: string; companyName: string; success: boolean; matchCount: number }[] = [];
   let cursor = 0;
 
@@ -232,7 +236,7 @@ export async function runAllEnabledChecks() {
     while (cursor < companies.length) {
       const company = companies[cursor++];
       try {
-        const run = await runCompanyCheck(company.id);
+        const run = await runCompanyCheck(company.id, company.userId, pageCache);
         results.push({ companyId: company.id, companyName: company.name, success: run.success, matchCount: run.matchCount });
       } catch {
         results.push({ companyId: company.id, companyName: company.name, success: false, matchCount: 0 });

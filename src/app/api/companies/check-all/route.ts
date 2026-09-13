@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { runAllEnabledChecks } from "@/lib/discovery";
+import { getUserId, unauthorized } from "@/lib/session";
 
-// Manual "check everything now" — the same underlying check the hourly
-// Vercel Cron job runs (see /api/cron/check-all), triggered from the UI so
-// you can test discovery locally before it's deployed and scheduled.
+export const maxDuration = 300;
+
+// Manual "check everything now" for the signed-in user — the same underlying
+// check the scheduled job runs for everyone (see /api/cron/check-all).
 export async function POST() {
-  const results = await runAllEnabledChecks();
+  const userId = await getUserId();
+  if (!userId) return unauthorized();
+
+  const results = await runAllEnabledChecks(userId);
   const totalMatches = results.reduce((sum, r) => sum + r.matchCount, 0);
   return NextResponse.json({
     checkedAt: new Date().toISOString(),
