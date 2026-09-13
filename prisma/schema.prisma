@@ -1,0 +1,225 @@
+// HQ data model — V1
+// Local dev uses SQLite (zero-config, file-based persistence).
+// For Vercel deployment, swap the datasource to Postgres (see README.md).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Core / identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+
+  tasks         Task[]
+  timeBlocks    TimeBlock[]
+  projects      Project[]
+  companies     Company[]
+  opportunities Opportunity[]
+}
+
+model Project {
+  id        String   @id @default(cuid())
+  name      String
+  color     String   @default("#6366f1")
+  archived  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tasks Task[]
+}
+
+// ---------------------------------------------------------------------------
+// Task manager
+// ---------------------------------------------------------------------------
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum TaskCategory {
+  FINANCE_CAREER
+  UNIVERSITY
+  PERSONAL
+  PROJECTS
+}
+
+model Task {
+  id                String       @id @default(cuid())
+  title             String
+  description       String?
+  deadline          DateTime?
+  priority          Priority     @default(MEDIUM)
+  category          TaskCategory @default(PERSONAL)
+  estimatedMinutes  Int?
+  status            TaskStatus   @default(TODO)
+  order             Int          @default(0)
+  completedAt       DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  opportunityId String?
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+
+  timeBlocks TimeBlock[]
+
+  @@index([userId, status])
+  @@index([userId, deadline])
+}
+
+// ---------------------------------------------------------------------------
+// Time blocker
+// ---------------------------------------------------------------------------
+
+model TimeBlock {
+  id          String   @id @default(cuid())
+  title       String
+  start       DateTime
+  end         DateTime
+  color       String   @default("#6366f1")
+  completed   Boolean  @default(false)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  taskId String?
+  task   Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([userId, start])
+}
+
+// ---------------------------------------------------------------------------
+// Finance opportunity tracker
+// ---------------------------------------------------------------------------
+
+enum Division {
+  INVESTMENT_BANKING
+  SALES_AND_TRADING
+  ASSET_MANAGEMENT
+  PRIVATE_EQUITY
+  HEDGE_FUNDS
+  QUANTITATIVE_FINANCE
+  OTHER
+}
+
+enum ProgrammeType {
+  SPRING_WEEK
+  FIRST_YEAR_INTERNSHIP
+  INSIGHT_PROGRAMME
+  OTHER
+}
+
+enum OpportunityStatus {
+  NOT_OPEN
+  OPEN
+  APPLYING
+  APPLIED
+  ASSESSMENT
+  INTERVIEW
+  OFFER
+  REJECTED
+  CLOSED
+}
+
+enum VerificationStatus {
+  CONFIRMED_OPEN
+  NEEDS_VERIFICATION
+  CLOSED
+  UNKNOWN
+}
+
+model Company {
+  id         String   @id @default(cuid())
+  name       String
+  website    String?
+  careersUrl String?
+  enabled    Boolean  @default(true)
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  opportunities Opportunity[]
+  checkRuns     CheckRun[]
+
+  @@index([userId])
+}
+
+model Opportunity {
+  id             String              @id @default(cuid())
+  company        Company?            @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  companyId      String?
+  companyName    String
+  programme      String
+  division       Division            @default(OTHER)
+  programmeType  ProgrammeType       @default(OTHER)
+  location       String?
+  openingDate    DateTime?
+  deadline       DateTime?
+  applicationUrl String?
+  status         OpportunityStatus   @default(NOT_OPEN)
+  dateApplied    DateTime?
+  notes          String?
+  source         String?
+  sourceUrl      String?
+  officialUrl    String?
+
+  verificationStatus VerificationStatus @default(UNKNOWN)
+  lastCheckedAt      DateTime?
+  lastVerifiedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tasks Task[]
+
+  @@index([userId, status])
+  @@index([userId, deadline])
+}
+
+model CheckRun {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  startedAt   DateTime @default(now())
+  finishedAt  DateTime?
+  success     Boolean  @default(false)
+  message     String
+  matchCount  Int      @default(0)
+
+  @@index([companyId])
+}
