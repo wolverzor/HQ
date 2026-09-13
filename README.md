@@ -71,12 +71,16 @@ See [`prisma/schema.prisma`](prisma/schema.prisma). Core entities:
   *Applying*, and creates a task (`Task.opportunityId`) with the deadline
   carried over and category set to *Finance / Career* — which immediately
   shows up in the task list and can be dragged onto the calendar.
-- The **Check opportunities** button on a watchlist company does a real
-  fetch of its careers page and scans for relevant keywords (spring week,
-  insight programme, internship, etc.). Matches are recorded as new
-  opportunities tagged **Needs Verification** — HQ never invents a deadline,
-  opening date, or marks something **Confirmed Open** on its own. See
-  [`src/lib/discovery.ts`](src/lib/discovery.ts).
+- The **Check** button on a watchlist company (and **Check all now** for
+  every enabled company at once) does a real fetch of its careers page and
+  scans for relevant keywords (spring week, insight programme, first-year/
+  off-cycle internship, summer analyst, division names, etc.). Matches are
+  recorded as new opportunities tagged **Needs Verification** — HQ never
+  invents a deadline, opening date, or marks something **Confirmed Open** on
+  its own. See [`src/lib/discovery.ts`](src/lib/discovery.ts).
+- The seed data ships with a broad default watchlist (~40 companies) spanning
+  investment banking, private equity, asset management, and sales & trading /
+  hedge funds / quant, so discovery isn't limited to firms you add yourself.
 
 ## Deploying to Vercel
 
@@ -115,6 +119,37 @@ the datasource to a hosted Postgres database (both have generous free tiers):
 
 Everything else — the PWA manifest, icons, and service worker — works out of
 the box on Vercel with no extra configuration.
+
+## Automatic hourly opportunity checks
+
+[`vercel.json`](vercel.json) defines a Vercel Cron job that hits
+`/api/cron/check-all` once an hour, which runs the same discovery check
+described above against every enabled watchlist company. This starts working
+automatically the moment the project is deployed to Vercel — no extra setup
+beyond deploying — but you should still add one environment variable so the
+endpoint can't be triggered by anyone else who finds the URL:
+
+1. In your Vercel project settings, add a `CRON_SECRET` environment variable
+   set to any long random string (e.g. `openssl rand -hex 32`).
+2. Vercel automatically sends that value as an `Authorization: Bearer
+   <CRON_SECRET>` header on every cron invocation — the route checks it
+   matches before running. Without `CRON_SECRET` set, the endpoint runs
+   unauthenticated (fine for local testing, not for production).
+
+Cron jobs only run once a project is deployed — there's no way to get a true
+"every hour, even when your laptop is off" schedule without a deployment.
+Locally (or any time before you deploy), use the **Check all now** button on
+the Watchlist tab to run the same check on demand.
+
+**On the scope of "discovery":** this checks a curated list of company
+careers pages (see [`prisma/seed.ts`](prisma/seed.ts) for the ~40 seeded
+firms, or add your own) for keyword mentions — it does not crawl the open
+web to find companies you haven't listed. Genuinely open-ended web discovery
+("find every finance internship on the internet") would need a search API
+(Google Programmable Search, Bing Web Search, SerpAPI, etc.), which needs an
+API key and a billing account that only you can set up. If you want that
+wired in, get an API key from one of those and it's a small, additive change
+to `src/lib/discovery.ts` — happy to build it once you have one.
 
 ## What's next
 

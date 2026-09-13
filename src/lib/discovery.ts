@@ -12,27 +12,61 @@ import type { Division, ProgrammeType } from "@prisma/client";
 // (see VerificationStatus in the schema). Its only job is to surface
 // candidates worth a human looking at, tagged "Needs Verification", so this
 // architecture (CheckRun log + verification status) can later be wired up to
-// a scheduled job without changing how results are recorded.
+// a scheduled job without changing how results are recorded — see
+// src/app/api/cron/check-all/route.ts, which does exactly that, hourly.
+//
+// A note on "first-year eligible": there is no reliable way to determine a
+// specific programme's year-of-study eligibility from a plain-text keyword
+// scan. Spring Weeks, Insight Programmes, Insight Days and First-Year /
+// Off-Cycle Internships are the industry-standard first-year-eligible
+// programme types, so those are matched with `likelyFirstYear: true`.
+// Standard "Summer Analyst" / "Summer Internship" programmes are
+// conventionally reserved for penultimate-year students (feeding into a
+// full-time offer) — they're still surfaced here, since they're worth
+// knowing about, but flagged `likelyFirstYear: false` and the generated
+// opportunity's notes say so explicitly rather than asserting eligibility
+// the scan can't actually confirm.
 // -----------------------------------------------------------------------------
 
-const KEYWORDS: { phrase: string; programmeType: ProgrammeType; division: Division }[] = [
-  { phrase: "spring week", programmeType: "SPRING_WEEK", division: "OTHER" },
-  { phrase: "spring programme", programmeType: "SPRING_WEEK", division: "OTHER" },
-  { phrase: "spring program", programmeType: "SPRING_WEEK", division: "OTHER" },
-  { phrase: "spring insight", programmeType: "INSIGHT_PROGRAMME", division: "OTHER" },
-  { phrase: "insight programme", programmeType: "INSIGHT_PROGRAMME", division: "OTHER" },
-  { phrase: "insight program", programmeType: "INSIGHT_PROGRAMME", division: "OTHER" },
-  { phrase: "first-year internship", programmeType: "FIRST_YEAR_INTERNSHIP", division: "OTHER" },
-  { phrase: "first year internship", programmeType: "FIRST_YEAR_INTERNSHIP", division: "OTHER" },
-  { phrase: "off-cycle internship", programmeType: "FIRST_YEAR_INTERNSHIP", division: "OTHER" },
-  { phrase: "off cycle internship", programmeType: "FIRST_YEAR_INTERNSHIP", division: "OTHER" },
-  { phrase: "sales and trading", programmeType: "OTHER", division: "SALES_AND_TRADING" },
-  { phrase: "sales & trading", programmeType: "OTHER", division: "SALES_AND_TRADING" },
-  { phrase: "quantitative", programmeType: "OTHER", division: "QUANTITATIVE_FINANCE" },
-  { phrase: "asset management", programmeType: "OTHER", division: "ASSET_MANAGEMENT" },
-  { phrase: "private equity", programmeType: "OTHER", division: "PRIVATE_EQUITY" },
-  { phrase: "hedge fund", programmeType: "OTHER", division: "HEDGE_FUNDS" },
-  { phrase: "investment banking", programmeType: "OTHER", division: "INVESTMENT_BANKING" },
+const TYPE_KEYWORDS: {
+  phrase: string;
+  programmeType: ProgrammeType;
+  likelyFirstYear: boolean;
+}[] = [
+  { phrase: "spring week", programmeType: "SPRING_WEEK", likelyFirstYear: true },
+  { phrase: "spring programme", programmeType: "SPRING_WEEK", likelyFirstYear: true },
+  { phrase: "spring program", programmeType: "SPRING_WEEK", likelyFirstYear: true },
+  { phrase: "springboard", programmeType: "SPRING_WEEK", likelyFirstYear: true },
+  { phrase: "spring insight", programmeType: "INSIGHT_PROGRAMME", likelyFirstYear: true },
+  { phrase: "insight programme", programmeType: "INSIGHT_PROGRAMME", likelyFirstYear: true },
+  { phrase: "insight program", programmeType: "INSIGHT_PROGRAMME", likelyFirstYear: true },
+  { phrase: "insight day", programmeType: "INSIGHT_PROGRAMME", likelyFirstYear: true },
+  { phrase: "early insight", programmeType: "INSIGHT_PROGRAMME", likelyFirstYear: true },
+  { phrase: "discovery programme", programmeType: "INSIGHT_PROGRAMME", likelyFirstYear: true },
+  { phrase: "discovery program", programmeType: "INSIGHT_PROGRAMME", likelyFirstYear: true },
+  { phrase: "explore programme", programmeType: "INSIGHT_PROGRAMME", likelyFirstYear: true },
+  { phrase: "first-year internship", programmeType: "FIRST_YEAR_INTERNSHIP", likelyFirstYear: true },
+  { phrase: "first year internship", programmeType: "FIRST_YEAR_INTERNSHIP", likelyFirstYear: true },
+  { phrase: "first year programme", programmeType: "FIRST_YEAR_INTERNSHIP", likelyFirstYear: true },
+  { phrase: "first year scheme", programmeType: "FIRST_YEAR_INTERNSHIP", likelyFirstYear: true },
+  { phrase: "off-cycle internship", programmeType: "FIRST_YEAR_INTERNSHIP", likelyFirstYear: true },
+  { phrase: "off cycle internship", programmeType: "FIRST_YEAR_INTERNSHIP", likelyFirstYear: true },
+  { phrase: "summer analyst", programmeType: "OTHER", likelyFirstYear: false },
+  { phrase: "summer internship", programmeType: "OTHER", likelyFirstYear: false },
+  { phrase: "summer program", programmeType: "OTHER", likelyFirstYear: false },
+  { phrase: "summer programme", programmeType: "OTHER", likelyFirstYear: false },
+];
+
+const DIVISION_KEYWORDS: { phrase: string; division: Division }[] = [
+  { phrase: "sales and trading", division: "SALES_AND_TRADING" },
+  { phrase: "sales & trading", division: "SALES_AND_TRADING" },
+  { phrase: "global markets", division: "SALES_AND_TRADING" },
+  { phrase: "quantitative", division: "QUANTITATIVE_FINANCE" },
+  { phrase: "asset management", division: "ASSET_MANAGEMENT" },
+  { phrase: "investment management", division: "ASSET_MANAGEMENT" },
+  { phrase: "private equity", division: "PRIVATE_EQUITY" },
+  { phrase: "hedge fund", division: "HEDGE_FUNDS" },
+  { phrase: "investment banking", division: "INVESTMENT_BANKING" },
 ];
 
 const FETCH_TIMEOUT_MS = 8000;
@@ -113,10 +147,12 @@ export async function runCompanyCheck(companyId: string) {
     });
   }
 
-  const matched = KEYWORDS.filter((k) => text.includes(k.phrase));
+  const matchedTypes = TYPE_KEYWORDS.filter((k) => text.includes(k.phrase));
+  const matchedDivisions = DIVISION_KEYWORDS.filter((k) => text.includes(k.phrase));
+  const inferredDivision: Division = matchedDivisions[0]?.division ?? "OTHER";
   const now = new Date();
 
-  for (const match of matched) {
+  for (const match of matchedTypes) {
     const existing = await prisma.opportunity.findFirst({
       where: {
         userId: DEMO_USER_ID,
@@ -135,20 +171,24 @@ export async function runCompanyCheck(companyId: string) {
         },
       });
     } else {
+      const eligibilityNote = match.likelyFirstYear
+        ? "This programme type is normally first-year eligible, but confirm on the official page."
+        : "This reads as a standard Summer internship — those are usually reserved for penultimate-year students, not first years. Verify eligibility before relying on this.";
+
       await prisma.opportunity.create({
         data: {
           userId: DEMO_USER_ID,
           companyId,
           companyName: company.name,
           programme: `${titleCase(match.phrase)} (auto-detected)`,
-          division: match.division,
+          division: inferredDivision,
           programmeType: match.programmeType,
           status: "NOT_OPEN",
           source: "Automatic keyword scan",
           sourceUrl: company.careersUrl,
           verificationStatus: "NEEDS_VERIFICATION",
           lastCheckedAt: now,
-          notes: `Detected the phrase "${match.phrase}" on the careers page. Opening date, deadline and application link were not set automatically — verify on the official site before relying on this.`,
+          notes: `Detected the phrase "${match.phrase}" on the careers page. ${eligibilityNote} Opening date, deadline and application link were not set automatically.`,
         },
       });
     }
@@ -160,13 +200,46 @@ export async function runCompanyCheck(companyId: string) {
       startedAt,
       finishedAt: new Date(),
       success: true,
-      matchCount: matched.length,
+      matchCount: matchedTypes.length,
       message:
-        matched.length > 0
-          ? `Found ${matched.length} relevant mention${matched.length === 1 ? "" : "s"} on the careers page (${matched
+        matchedTypes.length > 0
+          ? `Found ${matchedTypes.length} relevant mention${matchedTypes.length === 1 ? "" : "s"} on the careers page (${matchedTypes
               .map((m) => m.phrase)
               .join(", ")}). Marked as Needs Verification — confirm details on the official site.`
           : "No relevant keywords found on the careers page right now.",
     },
   });
+}
+
+const CHECK_CONCURRENCY = 6;
+
+/**
+ * Runs a check against every enabled, watched company for the demo user.
+ * Used by both the manual "check all" action and the hourly cron job.
+ * Runs with limited concurrency (rather than one-at-a-time or all-at-once)
+ * so a watchlist of dozens of companies finishes in a few seconds instead of
+ * minutes, and stays comfortably under a serverless function's time limit.
+ */
+export async function runAllEnabledChecks() {
+  const companies = await prisma.company.findMany({
+    where: { userId: DEMO_USER_ID, enabled: true, careersUrl: { not: null } },
+  });
+
+  const results: { companyId: string; companyName: string; success: boolean; matchCount: number }[] = [];
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < companies.length) {
+      const company = companies[cursor++];
+      try {
+        const run = await runCompanyCheck(company.id);
+        results.push({ companyId: company.id, companyName: company.name, success: run.success, matchCount: run.matchCount });
+      } catch {
+        results.push({ companyId: company.id, companyName: company.name, success: false, matchCount: 0 });
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(CHECK_CONCURRENCY, companies.length) }, worker));
+  return results;
 }

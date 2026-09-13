@@ -12,7 +12,7 @@ import {
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import { useOpportunities } from "@/hooks/use-opportunities";
-import { OpportunityRow } from "./opportunity-row";
+import { OpportunitySheet } from "./opportunity-sheet";
 import { OpportunityDialog } from "./opportunity-dialog";
 import { WatchlistView } from "./watchlist-view";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -59,7 +59,7 @@ export function OpportunitiesView() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6 md:px-8 md:py-10">
+    <div className="mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-10">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-[22px] font-semibold tracking-tight">Opportunities</h1>
@@ -118,9 +118,9 @@ export function OpportunitiesView() {
             </DropdownMenu>
           </div>
 
-          <div className="mt-3 space-y-2">
+          <div className="mt-3">
             {isLoading ? (
-              Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[110px] rounded-xl" />)
+              <Skeleton className="h-[320px] rounded-xl" />
             ) : filtered.length === 0 ? (
               <EmptyState
                 icon={LineChart}
@@ -129,7 +129,7 @@ export function OpportunitiesView() {
                 action={{ label: "Add opportunity", onClick: () => setCreateOpen(true) }}
               />
             ) : (
-              filtered.map((o) => <OpportunityRow key={o.id} opportunity={o} />)
+              <OpportunitySheet opportunities={filtered} />
             )}
           </div>
         </TabsContent>

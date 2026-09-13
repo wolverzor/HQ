@@ -72,4 +72,33 @@ export function useCheckCompany() {
   });
 }
 
+interface CheckAllResult {
+  checkedAt: string;
+  companiesChecked: number;
+  totalMatches: number;
+  results: { companyId: string; companyName: string; success: boolean; matchCount: number }[];
+}
+
+export function useCheckAllCompanies() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<CheckAllResult>("/api/companies/check-all"),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: COMPANIES_KEY });
+      qc.invalidateQueries({ queryKey: OPPS_KEY });
+      const failed = result.results.filter((r) => !r.success).length;
+      if (result.totalMatches > 0) {
+        toast.success(
+          `Checked ${result.companiesChecked} companies — found ${result.totalMatches} mention${result.totalMatches === 1 ? "" : "s"} across ${result.results.filter((r) => r.matchCount > 0).length} of them.`,
+        );
+      } else if (failed > 0) {
+        toast.warning(`Checked ${result.companiesChecked} companies — ${failed} couldn't be reached, no new mentions found.`);
+      } else {
+        toast.info(`Checked ${result.companiesChecked} companies — nothing new right now.`);
+      }
+    },
+    onError: () => toast.error("Couldn't run checks."),
+  });
+}
+
 export { COMPANIES_KEY };

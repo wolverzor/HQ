@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Building2, Plus } from "lucide-react";
+import { Building2, Loader2, Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useCompanies } from "@/hooks/use-companies";
+import { useCompanies, useCheckAllCompanies } from "@/hooks/use-companies";
 import { CompanyRow } from "./company-row";
 import { CompanyDialog } from "./company-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -12,22 +12,38 @@ import { Skeleton } from "@/components/shared/skeleton";
 export function WatchlistView() {
   const { data: companies, isLoading } = useCompanies();
   const [addOpen, setAddOpen] = useState(false);
+  const checkAll = useCheckAllCompanies();
+
+  const enabledCount = companies?.filter((c) => c.enabled).length ?? 0;
 
   return (
     <div>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[14px] font-medium text-foreground">Company watchlist</p>
           <p className="mt-0.5 text-[12.5px] text-muted-foreground max-w-xl">
             HQ scans each company&apos;s public careers page for relevant keywords and flags matches as{" "}
             <span className="font-medium text-warning">Needs Verification</span> — it never invents dates or
-            marks anything confirmed without you checking the official site.
+            marks anything confirmed without you checking the official site. Once deployed, this runs
+            automatically every hour (see the Vercel Cron setup in README.md) — until then, use{" "}
+            <span className="font-medium text-foreground">Check all now</span> to run it yourself.
           </p>
         </div>
-        <Button size="sm" variant="secondary" onClick={() => setAddOpen(true)} className="shrink-0">
-          <Plus className="size-3.5" />
-          Add company
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => checkAll.mutate()}
+            disabled={checkAll.isPending || enabledCount === 0}
+          >
+            {checkAll.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+            Check all now
+          </Button>
+          <Button size="sm" onClick={() => setAddOpen(true)}>
+            <Plus className="size-3.5" />
+            Add company
+          </Button>
+        </div>
       </div>
 
       <div className="mt-4 space-y-2">
