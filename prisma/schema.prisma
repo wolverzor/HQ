@@ -1,16 +1,14 @@
 // HQ data model
-// Postgres everywhere: locally via `npx prisma dev`, in production via Neon
-// (or any Postgres) — see README.md.
+// Postgres everywhere: locally via `npx prisma dev`, in production via
+// Prisma Postgres or Neon (Vercel Storage) — see README.md.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  // Migrations need a direct (non-pooled) connection on Neon.
-  directUrl = env("DATABASE_URL_UNPOOLED")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // ---------------------------------------------------------------------------

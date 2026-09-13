@@ -9,9 +9,11 @@ import { DEFAULT_WATCHLIST } from "@/lib/default-watchlist";
 export const googleAuthEnabled = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 
 // On Vercel the production URL is known without extra config; BETTER_AUTH_URL
-// still wins when set (e.g. a custom domain).
+// still wins when set (e.g. a custom domain). A localhost value is ignored on
+// Vercel, so a copied-over example .env can't break sign-in in production.
+const configuredURL = process.env.BETTER_AUTH_URL;
 const baseURL =
-  process.env.BETTER_AUTH_URL ??
+  (configuredURL && !(process.env.VERCEL && configuredURL.includes("localhost")) ? configuredURL : undefined) ||
   (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : undefined);
 
 export const auth = betterAuth({

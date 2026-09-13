@@ -109,11 +109,10 @@ company) belongs to the same user.
    [vercel.com/new](https://vercel.com/new) (framework: Next.js — no build
    settings to change). The first build will fail until steps 2–3 are done;
    that's expected.
-2. **Database**: in the Vercel project, open **Storage → Create Database →
-   Neon (Postgres)** and connect it to the project. This sets
-   `DATABASE_URL` and `DATABASE_URL_UNPOOLED` automatically. (Using another
-   Postgres host? Set both variables yourself — the same URL is fine if it
-   isn't pooled.)
+2. **Database**: add **Prisma Postgres** (offered during import) or **Neon**
+   from the project's **Storage** tab, and connect it to the project with no
+   custom env-var prefix. This sets `DATABASE_URL` automatically. (Using
+   another Postgres host? Set `DATABASE_URL` yourself.)
 3. **Environment variables** (Settings → Environment Variables):
    - `BETTER_AUTH_SECRET` — a long random string (`openssl rand -base64 32`)
    - `CRON_SECRET` — another long random string
