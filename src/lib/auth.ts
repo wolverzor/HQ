@@ -16,8 +16,26 @@ const baseURL =
   (configuredURL && !(process.env.VERCEL && configuredURL.includes("localhost")) ? configuredURL : undefined) ||
   (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : undefined);
 
+// Vercel serves a project from several working hostnames — the stable
+// production domain, but also a per-branch one and a unique one for the
+// exact deployment. Only trusting `baseURL` means sign-in fails with
+// "Invalid origin" for anyone using one of the others, so every hostname
+// Vercel tells us about for this deployment is trusted too.
+const asOrigin = (host: string | undefined) => (host ? `https://${host}` : undefined);
+const trustedOrigins = Array.from(
+  new Set(
+    [
+      baseURL,
+      asOrigin(process.env.VERCEL_PROJECT_PRODUCTION_URL),
+      asOrigin(process.env.VERCEL_BRANCH_URL),
+      asOrigin(process.env.VERCEL_URL),
+    ].filter((v): v is string => Boolean(v)),
+  ),
+);
+
 export const auth = betterAuth({
   baseURL,
+  trustedOrigins,
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   emailAndPassword: {
     enabled: true,
