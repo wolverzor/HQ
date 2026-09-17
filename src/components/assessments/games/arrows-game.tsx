@@ -22,8 +22,8 @@ export function ArrowsGame({ onComplete }: { onComplete: (result: GameResult) =>
   const [result, setResult] = useState<GameResult | null>(null);
   const [trial, setTrial] = useState(0);
   const [stage, setStage] = useState<Stage>("showing");
-  // Color indicates whether the CENTER arrow should be obeyed (blue) or ignored (gray, meaning respond to the outer arrows instead).
-  const [color, setColor] = useState<"blue" | "gray">("blue");
+  // Blue/black arrows: respond to the center arrow. Red arrows: respond to the side arrows instead.
+  const [color, setColor] = useState<"blue" | "red">("blue");
   const [centerDir, setCenterDir] = useState<Direction>("right");
   const [outerDir, setOuterDir] = useState<Direction>("right");
   const [correct, setCorrect] = useState(0);
@@ -46,7 +46,7 @@ export function ArrowsGame({ onComplete }: { onComplete: (result: GameResult) =>
       return;
     }
     setTrial(n);
-    setColor(rand() < 0.5 ? "blue" : "gray");
+    setColor(rand() < 0.5 ? "blue" : "red");
     setCenterDir(randomDirection());
     setOuterDir(randomDirection());
     setStage("showing");
@@ -102,7 +102,7 @@ export function ArrowsGame({ onComplete }: { onComplete: (result: GameResult) =>
     setPhase("intro");
   }
 
-  const arrowColor = color === "blue" ? "text-primary" : "text-subtle-foreground";
+  const arrowColor = color === "blue" ? "text-primary" : "text-danger";
   const Center = centerDir === "left" ? LeftIcon : RightIcon;
   const Outer = outerDir === "left" ? LeftIcon : RightIcon;
 
@@ -115,10 +115,12 @@ export function ArrowsGame({ onComplete }: { onComplete: (result: GameResult) =>
       onReplay={replay}
       instructions={
         <p className="text-[13px] text-muted-foreground">
-          Five arrows appear in a row. When the arrows are <span className="font-semibold text-primary">blue</span>,
-          respond to the direction of the <span className="font-semibold">center</span> arrow. When they&apos;re{" "}
-          <span className="font-semibold text-subtle-foreground">gray</span>, ignore the center arrow and respond
-          to the direction of the outer arrows instead. {TRIALS} trials.
+          Five arrows appear in a row. When they&apos;re{" "}
+          <span className="font-semibold text-primary">blue or black</span>, respond to the direction of the{" "}
+          <span className="font-semibold">center</span> arrow. When they&apos;re{" "}
+          <span className="font-semibold text-danger">red</span>, ignore the center arrow and respond to the
+          direction of the <span className="font-semibold">side</span> arrows instead - the side arrows always
+          point the same way as each other. {TRIALS} trials.
         </p>
       }
     >

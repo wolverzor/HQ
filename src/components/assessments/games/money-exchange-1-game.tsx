@@ -12,7 +12,7 @@ const ROUNDS = 5;
 const ENDOWMENT = 10;
 const MULTIPLIER = 3;
 
-type Stage = "choosing" | "revealed";
+type Stage = "choosing" | "revealed" | "rating";
 
 // Simulated partner "return ratio" per round - varies to feel like a real counterpart.
 function partnerReturnRatio() {
@@ -29,6 +29,7 @@ export function MoneyExchange1Game({ onComplete }: { onComplete: (result: GameRe
   const [totalSent, setTotalSent] = useState(0);
   const [totalReturned, setTotalReturned] = useState(0);
   const [finalBalance, setFinalBalance] = useState(0);
+  const [fairnessRatings, setFairnessRatings] = useState<number[]>([]);
 
   function start() {
     setRound(0);
@@ -36,6 +37,7 @@ export function MoneyExchange1Game({ onComplete }: { onComplete: (result: GameRe
     setTotalSent(0);
     setTotalReturned(0);
     setFinalBalance(0);
+    setFairnessRatings([]);
     setPhase("playing");
   }
 
@@ -51,6 +53,11 @@ export function MoneyExchange1Game({ onComplete }: { onComplete: (result: GameRe
     setStage("revealed");
   }
 
+  function rateFairness(rating: number) {
+    setFairnessRatings((r) => [...r, rating]);
+    nextRound();
+  }
+
   function nextRound() {
     const next = round + 1;
     if (next >= ROUNDS) {
@@ -63,6 +70,9 @@ export function MoneyExchange1Game({ onComplete }: { onComplete: (result: GameRe
 
   function finish() {
     const avgSent = totalSent / ROUNDS;
+    const avgFairness = fairnessRatings.length
+      ? fairnessRatings.reduce((a, b) => a + b, 0) / fairnessRatings.length
+      : 0;
     const r: GameResult = {
       completedAt: new Date().toISOString(),
       summary: `Ended with ${finalBalance} pts`,
@@ -70,6 +80,7 @@ export function MoneyExchange1Game({ onComplete }: { onComplete: (result: GameRe
         "Final balance": finalBalance,
         "Avg sent / round": avgSent.toFixed(1),
         "Total received back": totalReturned,
+        "Avg fairness rating": avgFairness.toFixed(1),
       },
     };
     setResult(r);
@@ -134,7 +145,26 @@ export function MoneyExchange1Game({ onComplete }: { onComplete: (result: GameRe
             <p className="text-[14px] font-semibold text-foreground">
               This round&apos;s take: {ENDOWMENT - sent + returned} pts
             </p>
-            <Button onClick={nextRound}>{round + 1 >= ROUNDS ? "See results" : "Next round"}</Button>
+            <Button onClick={() => setStage("rating")}>Continue</Button>
+          </div>
+        )}
+
+        {stage === "rating" && (
+          <div className="flex flex-col items-center gap-3 text-center">
+            <p className="text-[13.5px] text-muted-foreground">How fair was your partner in this exchange?</p>
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {Array.from({ length: 11 }, (_, i) => i).map((rating) => (
+                <button
+                  key={rating}
+                  type="button"
+                  onClick={() => rateFairness(rating)}
+                  className="flex size-9 items-center justify-center rounded-lg border border-border bg-surface-inset text-[13px] font-medium text-foreground transition-colors hover:bg-surface-hover cursor-pointer"
+                >
+                  {rating}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground">0 = very unfair, 10 = very fair</p>
           </div>
         )}
       </div>

@@ -37,6 +37,19 @@ export function StopGame({ onComplete }: { onComplete: (result: GameResult) => v
     };
   }, []);
 
+  useEffect(() => {
+    if (phase !== "playing") return;
+    function onKey(e: KeyboardEvent) {
+      if (e.code === "Space") {
+        e.preventDefault();
+        respond();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, stage]);
+
   function nextTrial(n: number) {
     if (n >= TRIALS) {
       finish();
@@ -106,8 +119,9 @@ export function StopGame({ onComplete }: { onComplete: (result: GameResult) => v
       onReplay={replay}
       instructions={
         <p className="text-[13px] text-muted-foreground">
-          Tap the shape whenever it&apos;s a green circle. When it turns into a red square instead, hold still and
-          don&apos;t tap. {TRIALS} trials, roughly a quarter of them will be stop signals.
+          Press the spacebar whenever you see a <span className="font-semibold text-danger">red circle</span>. When
+          you see a <span className="font-semibold text-success">green circle</span> instead, do nothing and let it
+          pass. {TRIALS} trials, roughly a quarter of them will be green (no-go) signals.
         </p>
       }
     >
@@ -122,8 +136,8 @@ export function StopGame({ onComplete }: { onComplete: (result: GameResult) => v
               type="button"
               onClick={respond}
               className={cn(
-                "size-24 cursor-pointer transition-transform active:scale-95",
-                trialType === "go" ? "rounded-full bg-success" : "rounded-md bg-danger",
+                "size-24 cursor-pointer rounded-full transition-transform active:scale-95",
+                trialType === "go" ? "bg-danger" : "bg-success",
               )}
               aria-label={trialType === "go" ? "Go" : "Stop"}
             />

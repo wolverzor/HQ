@@ -8,20 +8,25 @@ import { Button } from "@/components/ui/button";
 import { rand } from "@/lib/assessments/rng";
 
 const meta = getGameMeta("balloon")!;
-const TOTAL_BALLOONS = 6;
+const TOTAL_BALLOONS = 8;
 const POINTS_PER_PUMP = 5;
-// Pop probability rises with each pump - roughly a 1-in-(128-pumps) chance per pump, capped.
-function popChance(pumps: number) {
-  return Math.min(0.9, pumps / 24);
+// Each balloon gets a hidden pop point drawn uniformly from 1-64 pumps (a shortened version
+// of the classic BART's 1-128 range, since a real balloon rarely survives past the 30s-40s
+// in a quick practice session). The balloon pops once you pump past that hidden point.
+const MAX_BREAKPOINT = 64;
+
+function drawBreakpoint() {
+  return 1 + Math.floor(rand() * MAX_BREAKPOINT);
 }
 
-type Stage = "pumping" | "popped" | "cashed";
+type Stage = "pumping" | "popped" | "collected";
 
 export function BalloonGame({ onComplete }: { onComplete: (result: GameResult) => void }) {
   const [phase, setPhase] = useState<GamePhase>("intro");
   const [result, setResult] = useState<GameResult | null>(null);
   const [balloonIndex, setBalloonIndex] = useState(0);
   const [pumps, setPumps] = useState(0);
+  const [breakpoint, setBreakpoint] = useState(0);
   const [stage, setStage] = useState<Stage>("pumping");
   const [totalScore, setTotalScore] = useState(0);
   const [pumpHistory, setPumpHistory] = useState<number[]>([]);
@@ -29,6 +34,7 @@ export function BalloonGame({ onComplete }: { onComplete: (result: GameResult) =
   function start() {
     setBalloonIndex(0);
     setPumps(0);
+    setBreakpoint(drawBreakpoint());
     setStage("pumping");
     setTotalScore(0);
     setPumpHistory([]);
@@ -36,7 +42,7 @@ export function BalloonGame({ onComplete }: { onComplete: (result: GameResult) =
   }
 
   function pump() {
-    if (rand() < popChance(pumps)) {
+    if (pumps >= breakpoint) {
       setStage("popped");
       setPumpHistory((h) => [...h, pumps]);
       return;
@@ -44,10 +50,10 @@ export function BalloonGame({ onComplete }: { onComplete: (result: GameResult) =
     setPumps((p) => p + 1);
   }
 
-  function cashOut() {
+  function collect() {
     setTotalScore((s) => s + pumps * POINTS_PER_PUMP);
     setPumpHistory((h) => [...h, pumps]);
-    setStage("cashed");
+    setStage("collected");
   }
 
   function nextBalloon() {
@@ -58,6 +64,7 @@ export function BalloonGame({ onComplete }: { onComplete: (result: GameResult) =
     }
     setBalloonIndex(nextIndex);
     setPumps(0);
+    setBreakpoint(drawBreakpoint());
     setStage("pumping");
   }
 
@@ -96,8 +103,8 @@ export function BalloonGame({ onComplete }: { onComplete: (result: GameResult) =
       instructions={
         <p className="text-[13px] text-muted-foreground">
           Each pump adds points to the current balloon, but the balloon can pop at any time - and popping loses
-          everything on that balloon. Cash out whenever you want to bank the points. {TOTAL_BALLOONS} balloons
-          total.
+          everything on that balloon. Collect whenever you want to bank the points before that happens.{" "}
+          {TOTAL_BALLOONS} balloons total.
         </p>
       }
     >
@@ -129,8 +136,8 @@ export function BalloonGame({ onComplete }: { onComplete: (result: GameResult) =
             <Button size="lg" onClick={pump}>
               Pump
             </Button>
-            <Button size="lg" variant="secondary" onClick={cashOut} disabled={pumps === 0}>
-              Cash out
+            <Button size="lg" variant="secondary" onClick={collect} disabled={pumps === 0}>
+              Collect
             </Button>
           </div>
         )}
@@ -142,9 +149,9 @@ export function BalloonGame({ onComplete }: { onComplete: (result: GameResult) =
           </div>
         )}
 
-        {stage === "cashed" && (
+        {stage === "collected" && (
           <div className="flex flex-col items-center gap-2">
-            <p className="text-[13.5px] font-medium text-success">Cashed out {pumps * POINTS_PER_PUMP} points.</p>
+            <p className="text-[13.5px] font-medium text-success">Collected {pumps * POINTS_PER_PUMP} points.</p>
             <Button onClick={nextBalloon}>Next balloon</Button>
           </div>
         )}

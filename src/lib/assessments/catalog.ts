@@ -57,8 +57,8 @@ export const GAME_CATALOG: GameMeta[] = [
   {
     id: "tower",
     title: "Tower",
-    tagline: "Classic disk-stacking puzzle",
-    description: "Move a stack of discs from peg A to peg C following Tower of Hanoi rules.",
+    tagline: "Match the target arrangement",
+    description: "Rearrange colored discs across three pegs to match a target layout in as few moves as possible.",
     measures: ["Planning", "Problem-solving", "Working memory"],
     duration: "5-8 minutes",
   },
@@ -73,9 +73,9 @@ export const GAME_CATALOG: GameMeta[] = [
   {
     id: "money-exchange-2",
     title: "Money Exchange II",
-    tagline: "Accept or reject the split",
-    description: "Respond to offers from another player deciding whether to accept or reject splits of a sum.",
-    measures: ["Fairness", "Negotiation"],
+    tagline: "Give, take, and rate the fairness",
+    description: "Across two rounds, decide how much to send, give, or take from a partner, then rate how fair each outcome felt.",
+    measures: ["Fairness", "Generosity"],
     duration: "2-3 minutes",
   },
   {
@@ -89,8 +89,8 @@ export const GAME_CATALOG: GameMeta[] = [
   {
     id: "stop",
     title: "Stop",
-    tagline: "Go, unless told not to",
-    description: "Press a key when you see a shape - but stop yourself when you hear a signal.",
+    tagline: "Go, unless the signal says otherwise",
+    description: "Press a key on red circles, but hold still when you see green.",
     measures: ["Impulse control", "Inhibition"],
     duration: "2-3 minutes",
   },
