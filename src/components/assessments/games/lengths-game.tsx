@@ -37,6 +37,22 @@ export function LengthsGame({ onComplete }: { onComplete: (result: GameResult) =
     };
   }, []);
 
+  useEffect(() => {
+    if (phase !== "playing") return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        answer("left");
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        answer("right");
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, stage]);
+
   function nextTrial(n: number) {
     if (n >= TRIALS) {
       finish();
@@ -95,8 +111,8 @@ export function LengthsGame({ onComplete }: { onComplete: (result: GameResult) =
       onReplay={replay}
       instructions={
         <p className="text-[13px] text-muted-foreground">
-          Two horizontal lines appear side by side. Click the side with the longer line, as quickly and accurately
-          as you can. {TRIALS} trials.
+          Two horizontal lines appear side by side. Press the left/right arrow key (or click the side) with the
+          longer line, as quickly and accurately as you can. {TRIALS} trials.
         </p>
       }
     >

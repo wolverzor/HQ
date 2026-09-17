@@ -40,6 +40,22 @@ export function ArrowsGame({ onComplete }: { onComplete: (result: GameResult) =>
     };
   }, []);
 
+  useEffect(() => {
+    if (phase !== "playing") return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        answer("left");
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        answer("right");
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, stage]);
+
   function nextTrial(n: number) {
     if (n >= TRIALS) {
       finish();
@@ -120,7 +136,7 @@ export function ArrowsGame({ onComplete }: { onComplete: (result: GameResult) =>
           <span className="font-semibold">center</span> arrow. When they&apos;re{" "}
           <span className="font-semibold text-danger">red</span>, ignore the center arrow and respond to the
           direction of the <span className="font-semibold">side</span> arrows instead - the side arrows always
-          point the same way as each other. {TRIALS} trials.
+          point the same way as each other. Use the left/right arrow keys or click the buttons. {TRIALS} trials.
         </p>
       }
     >

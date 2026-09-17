@@ -33,6 +33,22 @@ export function DigitsMemoryGame({ onComplete }: { onComplete: (result: GameResu
     };
   }, []);
 
+  useEffect(() => {
+    if (stage !== "input") return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key >= "0" && e.key <= "9") {
+        e.preventDefault();
+        pressDigit(e.key);
+      } else if (e.key === "Backspace") {
+        e.preventDefault();
+        backspace();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, input]);
+
   function playSequence(seq: number[]) {
     setStage("showing");
     setShownIndex(-1);
@@ -116,8 +132,8 @@ export function DigitsMemoryGame({ onComplete }: { onComplete: (result: GameResu
       onReplay={replay}
       instructions={
         <p className="text-[13px] text-muted-foreground">
-          Watch the digits appear one at a time, then type the sequence back in the same order. Each round adds one
-          more digit until you make a mistake.
+          Watch the digits appear one at a time, then type the sequence back in the same order using your keyboard
+          or the on-screen pad. Each round adds one more digit until you make a mistake.
         </p>
       }
     >
