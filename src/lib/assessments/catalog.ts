@@ -105,8 +105,8 @@ export const GAME_CATALOG: GameMeta[] = [
   {
     id: "lengths",
     title: "Lengths",
-    tagline: "Which line is longer?",
-    description: "Judge which of two lines is longer across many rapid trials.",
+    tagline: "Short mouth or long mouth?",
+    description: "A face flashes briefly with a subtly short or long mouth - judge which one it was.",
     measures: ["Perceptual accuracy", "Consistency"],
     duration: "1-2 minutes",
   },

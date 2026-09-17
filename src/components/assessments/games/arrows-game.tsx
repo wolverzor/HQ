@@ -148,14 +148,14 @@ export function ArrowsGame({ onComplete }: { onComplete: (result: GameResult) =>
           Trial {Math.min(trial + 1, TRIALS)} / {TRIALS}
         </div>
 
-        <div className="flex h-20 items-center justify-center gap-1">
+        <div className="flex h-28 items-center justify-center gap-3">
           {stage === "showing" && (
             <>
-              <Outer className={`size-6 ${arrowColor}`} />
-              <Outer className={`size-6 ${arrowColor}`} />
-              <Center className={`size-6 ${arrowColor}`} />
-              <Outer className={`size-6 ${arrowColor}`} />
-              <Outer className={`size-6 ${arrowColor}`} />
+              <Outer className={`size-11 ${arrowColor}`} strokeWidth={2.5} />
+              <Outer className={`size-11 ${arrowColor}`} strokeWidth={2.5} />
+              <Center className={`size-11 ${arrowColor}`} strokeWidth={2.5} />
+              <Outer className={`size-11 ${arrowColor}`} strokeWidth={2.5} />
+              <Outer className={`size-11 ${arrowColor}`} strokeWidth={2.5} />
             </>
           )}
         </div>

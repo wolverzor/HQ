@@ -7,18 +7,22 @@ import type { GameResult } from "@/hooks/use-game-progress";
 import { now, rand } from "@/lib/assessments/rng";
 
 const meta = getGameMeta("lengths")!;
-// ~80 rapid trials fills the real game's 1-2 minute window at a typical sub-second response pace.
-const TRIALS = 80;
+// ~70 trials at a very brief flash fills the real game's 1-2 minute window.
+const TRIALS = 70;
+const SHOW_MS = 350;
+const GAP_MS = 200;
 
-type Stage = "showing" | "answered";
+type Stage = "showing" | "answering";
+type MouthLength = "short" | "long";
 
-function randomPair() {
-  const base = 60 + rand() * 40;
-  const diff = 8 + rand() * 40;
-  const leftLonger = rand() < 0.5;
-  const left = leftLonger ? base + diff : base;
-  const right = leftLonger ? base : base + diff;
-  return { left, right, longer: leftLonger ? "left" : "right" } as const;
+// Real mechanic: a face flashes briefly with a subtly shorter or longer mouth (the two
+// categories differ by only ~8-15%), and you judge which it was after it's gone.
+function randomMouth() {
+  const base = 18 + rand() * 4;
+  const diffPct = 0.08 + rand() * 0.07;
+  const length: MouthLength = rand() < 0.5 ? "short" : "long";
+  const halfWidth = length === "long" ? base * (1 + diffPct) : base * (1 - diffPct);
+  return { halfWidth, length };
 }
 
 export function LengthsGame({ onComplete }: { onComplete: (result: GameResult) => void }) {
@@ -26,7 +30,7 @@ export function LengthsGame({ onComplete }: { onComplete: (result: GameResult) =
   const [result, setResult] = useState<GameResult | null>(null);
   const [trial, setTrial] = useState(0);
   const [stage, setStage] = useState<Stage>("showing");
-  const [pair, setPair] = useState(randomPair());
+  const [mouth, setMouth] = useState(randomMouth());
   const [correct, setCorrect] = useState(0);
   const rtTimes = useRef<number[]>([]);
   const shownAt = useRef(0);
@@ -43,10 +47,10 @@ export function LengthsGame({ onComplete }: { onComplete: (result: GameResult) =
     function onKey(e: KeyboardEvent) {
       if (e.key === "ArrowLeft") {
         e.preventDefault();
-        answer("left");
+        answer("short");
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
-        answer("right");
+        answer("long");
       }
     }
     window.addEventListener("keydown", onKey);
@@ -60,9 +64,10 @@ export function LengthsGame({ onComplete }: { onComplete: (result: GameResult) =
       return;
     }
     setTrial(n);
-    setPair(randomPair());
+    setMouth(randomMouth());
     setStage("showing");
     shownAt.current = now();
+    timeoutRef.current = setTimeout(() => setStage("answering"), SHOW_MS);
   }
 
   function start() {
@@ -72,13 +77,12 @@ export function LengthsGame({ onComplete }: { onComplete: (result: GameResult) =
     nextTrial(0);
   }
 
-  function answer(side: "left" | "right") {
-    if (stage !== "showing") return;
+  function answer(guess: MouthLength) {
+    if (stage !== "answering") return;
     const rt = now() - shownAt.current;
     rtTimes.current.push(rt);
-    if (side === pair.longer) setCorrect((c) => c + 1);
-    setStage("answered");
-    timeoutRef.current = setTimeout(() => nextTrial(trial + 1), 250);
+    if (guess === mouth.length) setCorrect((c) => c + 1);
+    timeoutRef.current = setTimeout(() => nextTrial(trial + 1), GAP_MS);
   }
 
   function finish() {
@@ -112,8 +116,9 @@ export function LengthsGame({ onComplete }: { onComplete: (result: GameResult) =
       onReplay={replay}
       instructions={
         <p className="text-[13px] text-muted-foreground">
-          Two horizontal lines appear side by side. Press the left/right arrow key (or click the side) with the
-          longer line, as quickly and accurately as you can. {TRIALS} trials.
+          A face flashes briefly with either a short or long mouth - the difference is subtle. After it
+          disappears, press the left arrow key for a short mouth or the right arrow key for a long mouth, as
+          quickly and accurately as you can. {TRIALS} trials.
         </p>
       }
     >
@@ -122,23 +127,35 @@ export function LengthsGame({ onComplete }: { onComplete: (result: GameResult) =
           Trial {Math.min(trial + 1, TRIALS)} / {TRIALS}
         </div>
 
-        <div className="flex h-32 w-full items-center justify-around">
+        <div className="flex h-28 w-28 items-center justify-center rounded-full bg-surface-inset text-foreground">
+          {stage === "showing" ? (
+            <svg viewBox="0 0 100 100" className="size-20" fill="none" stroke="currentColor" strokeWidth="3.5">
+              <circle cx="50" cy="50" r="42" strokeWidth="3" />
+              <circle cx="34" cy="42" r="4" fill="currentColor" stroke="none" />
+              <circle cx="66" cy="42" r="4" fill="currentColor" stroke="none" />
+              <path d={`M${50 - mouth.halfWidth},68 Q50,72 ${50 + mouth.halfWidth},68`} strokeLinecap="round" />
+            </svg>
+          ) : (
+            <span className="text-[32px] font-semibold text-muted-foreground">?</span>
+          )}
+        </div>
+
+        <div className="flex gap-3">
           <button
             type="button"
-            onClick={() => answer("left")}
-            disabled={stage !== "showing"}
-            className="flex h-full flex-1 items-center justify-center cursor-pointer disabled:cursor-default"
+            disabled={stage !== "answering"}
+            onClick={() => answer("short")}
+            className="rounded-xl border border-border bg-surface-inset px-4 py-2.5 text-[13.5px] font-medium text-foreground transition-colors hover:bg-surface-hover disabled:opacity-40 cursor-pointer disabled:cursor-default"
           >
-            <div className="h-1.5 rounded-full bg-primary" style={{ width: `${pair.left}px` }} />
+            ← Short mouth
           </button>
-          <div className="h-16 w-px bg-border" />
           <button
             type="button"
-            onClick={() => answer("right")}
-            disabled={stage !== "showing"}
-            className="flex h-full flex-1 items-center justify-center cursor-pointer disabled:cursor-default"
+            disabled={stage !== "answering"}
+            onClick={() => answer("long")}
+            className="rounded-xl border border-border bg-surface-inset px-4 py-2.5 text-[13.5px] font-medium text-foreground transition-colors hover:bg-surface-hover disabled:opacity-40 cursor-pointer disabled:cursor-default"
           >
-            <div className="h-1.5 rounded-full bg-primary" style={{ width: `${pair.right}px` }} />
+            Long mouth →
           </button>
         </div>
       </div>
