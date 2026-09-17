@@ -8,7 +8,9 @@ import { cn } from "@/lib/utils";
 import { rand } from "@/lib/assessments/rng";
 
 const meta = getGameMeta("cards")!;
-const TOTAL_DRAWS = 40;
+// 100 draws matches the standard academic Iowa Gambling Task trial count, which also fills
+// the real game's stated 4-5 minute window at a natural read-and-decide pace.
+const TOTAL_DRAWS = 100;
 
 // Classic Iowa Gambling Task profile: A/B are "bad" decks (big reward, bigger occasional loss,
 // net negative over time); C/D are "good" decks (smaller reward, smaller occasional loss, net positive).

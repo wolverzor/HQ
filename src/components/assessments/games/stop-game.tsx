@@ -8,7 +8,8 @@ import { cn } from "@/lib/utils";
 import { rand } from "@/lib/assessments/rng";
 
 const meta = getGameMeta("stop")!;
-const TRIALS = 24;
+// ~110 trials at a 1.4s cycle fills the real game's 2-3 minute window.
+const TRIALS = 110;
 const STOP_RATIO = 0.25;
 const SHOW_MS = 900;
 const GAP_MS = 500;

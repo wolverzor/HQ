@@ -5,18 +5,20 @@ import { GameShell, type GamePhase } from "@/components/assessments/game-shell";
 import { getGameMeta } from "@/lib/assessments/catalog";
 import type { GameResult } from "@/hooks/use-game-progress";
 import { now, rand } from "@/lib/assessments/rng";
+import { FaceIllustration } from "@/components/assessments/games/face-illustration";
 
 const meta = getGameMeta("faces")!;
-const TRIALS = 15;
+// ~50 trials at ~1200ms display + ~1.5s avg response fills the real game's 2-3 minute window.
+const TRIALS = 50;
 const SHOW_MS = 1200;
 
 const EMOTIONS = [
-  { key: "happy", label: "Happy", emoji: "🙂" },
-  { key: "sad", label: "Sad", emoji: "🙁" },
-  { key: "angry", label: "Angry", emoji: "😠" },
-  { key: "surprised", label: "Surprised", emoji: "😲" },
-  { key: "fearful", label: "Fearful", emoji: "😨" },
-  { key: "disgusted", label: "Disgusted", emoji: "🤢" },
+  { key: "happy", label: "Happy" },
+  { key: "sad", label: "Sad" },
+  { key: "angry", label: "Angry" },
+  { key: "surprised", label: "Surprised" },
+  { key: "fearful", label: "Fearful" },
+  { key: "disgusted", label: "Disgusted" },
 ] as const;
 
 type Stage = "showing" | "answering";
@@ -124,8 +126,12 @@ export function FacesGame({ onComplete }: { onComplete: (result: GameResult) => 
           Trial {Math.min(trial + 1, TRIALS)} / {TRIALS}
         </div>
 
-        <div className="flex h-28 w-28 items-center justify-center rounded-full bg-surface-inset text-[72px]">
-          {stage === "showing" ? current.emoji : "❔"}
+        <div className="flex h-28 w-28 items-center justify-center rounded-full bg-surface-inset text-foreground">
+          {stage === "showing" ? (
+            <FaceIllustration emotion={current.key} className="size-20" />
+          ) : (
+            <span className="text-[32px] font-semibold text-muted-foreground">?</span>
+          )}
         </div>
 
         <div className="grid w-full grid-cols-2 gap-2">

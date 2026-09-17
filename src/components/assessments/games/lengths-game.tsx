@@ -7,7 +7,8 @@ import type { GameResult } from "@/hooks/use-game-progress";
 import { now, rand } from "@/lib/assessments/rng";
 
 const meta = getGameMeta("lengths")!;
-const TRIALS = 18;
+// ~80 rapid trials fills the real game's 1-2 minute window at a typical sub-second response pace.
+const TRIALS = 80;
 
 type Stage = "showing" | "answered";
 

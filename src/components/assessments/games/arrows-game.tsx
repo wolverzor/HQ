@@ -8,7 +8,10 @@ import { ArrowLeft as LeftIcon, ArrowRight as RightIcon } from "lucide-react";
 import { now, rand } from "@/lib/assessments/rng";
 
 const meta = getGameMeta("arrows")!;
-const TRIALS = 20;
+// Real pymetrics runs ~135 arrow-sets in 3 minutes (~1.3s/trial) - match that cadence and count.
+const TRIALS = 135;
+const SHOW_MS = 1000;
+const GAP_MS = 300;
 
 type Direction = "left" | "right";
 type Stage = "showing" | "gap";
@@ -73,8 +76,8 @@ export function ArrowsGame({ onComplete }: { onComplete: (result: GameResult) =>
 
     timeoutRef.current = setTimeout(() => {
       setStage("gap");
-      timeoutRef.current = setTimeout(() => nextTrial(n + 1), 350);
-    }, 1500);
+      timeoutRef.current = setTimeout(() => nextTrial(n + 1), GAP_MS);
+    }, SHOW_MS);
   }
 
   function start() {

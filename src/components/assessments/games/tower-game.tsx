@@ -8,15 +8,17 @@ import { cn } from "@/lib/utils";
 import { now, rand } from "@/lib/assessments/rng";
 
 const meta = getGameMeta("tower")!;
-const DISCS = 5;
-const DISC_COLORS = ["bg-primary", "bg-warning", "bg-success", "bg-danger", "bg-foreground"];
+const DISC_COLORS = ["bg-primary", "bg-warning", "bg-success", "bg-danger", "bg-foreground", "bg-subtle-foreground"];
+// A sequence of puzzles with increasing disc counts, like the real multi-round Tower game,
+// rather than a single one-off arrangement - fills out the stated 5-8 minute session.
+const PUZZLE_DISCS = [3, 3, 4, 4, 5, 5, 6];
 
 type Pegs = number[][];
 
 // Randomly scatter all discs across 3 pegs in a random stacking order - discs have no size
 // constraint here (unlike classic Hanoi), any disc can sit on any other.
-function randomArrangement(): Pegs {
-  const discs = Array.from({ length: DISCS }, (_, i) => i);
+function randomArrangement(discCount: number): Pegs {
+  const discs = Array.from({ length: discCount }, (_, i) => i);
   for (let i = discs.length - 1; i > 0; i--) {
     const j = Math.floor(rand() * (i + 1));
     [discs[i], discs[j]] = [discs[j], discs[i]];
@@ -32,14 +34,25 @@ function arrangementsEqual(a: Pegs, b: Pegs) {
   return a.every((peg, i) => peg.length === b[i].length && peg.every((disc, j) => disc === b[i][j]));
 }
 
+function newPuzzle(discCount: number) {
+  let startPegs: Pegs;
+  let goalPegs: Pegs;
+  do {
+    startPegs = randomArrangement(discCount);
+    goalPegs = randomArrangement(discCount);
+  } while (arrangementsEqual(startPegs, goalPegs));
+  return { startPegs, goalPegs };
+}
+
 export function TowerGame({ onComplete }: { onComplete: (result: GameResult) => void }) {
   const [phase, setPhase] = useState<GamePhase>("intro");
   const [result, setResult] = useState<GameResult | null>(null);
+  const [puzzleIndex, setPuzzleIndex] = useState(0);
   const [pegs, setPegs] = useState<Pegs>([[], [], []]);
   const [target, setTarget] = useState<Pegs>([[], [], []]);
   const [selected, setSelected] = useState<number | null>(null);
-  const [moves, setMoves] = useState(0);
-  const [firstMoveMs, setFirstMoveMs] = useState<number | null>(null);
+  const [puzzleMoves, setPuzzleMoves] = useState(0);
+  const [totalMoves, setTotalMoves] = useState(0);
   const startedAt = useRef(0);
   const [elapsed, setElapsed] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -54,20 +67,20 @@ export function TowerGame({ onComplete }: { onComplete: (result: GameResult) => 
     };
   }, [phase]);
 
-  function start() {
-    let startPegs: Pegs;
-    let goalPegs: Pegs;
-    do {
-      startPegs = randomArrangement();
-      goalPegs = randomArrangement();
-    } while (arrangementsEqual(startPegs, goalPegs));
+  function loadPuzzle(index: number) {
+    const { startPegs, goalPegs } = newPuzzle(PUZZLE_DISCS[index]);
+    setPuzzleIndex(index);
     setPegs(startPegs);
     setTarget(goalPegs);
     setSelected(null);
-    setMoves(0);
-    setFirstMoveMs(null);
+    setPuzzleMoves(0);
+  }
+
+  function start() {
+    setTotalMoves(0);
     setElapsed(0);
     startedAt.current = now();
+    loadPuzzle(0);
     setPhase("playing");
   }
 
@@ -90,25 +103,31 @@ export function TowerGame({ onComplete }: { onComplete: (result: GameResult) => 
     setPegs(nextPegs);
     setSelected(null);
 
-    if (firstMoveMs === null) setFirstMoveMs(Math.round(now() - startedAt.current));
-    const finalMoves = moves + 1;
-    setMoves(finalMoves);
+    const finalPuzzleMoves = puzzleMoves + 1;
+    setPuzzleMoves(finalPuzzleMoves);
+    const finalTotalMoves = totalMoves + 1;
+    setTotalMoves(finalTotalMoves);
 
     if (arrangementsEqual(nextPegs, target)) {
-      finish(finalMoves);
+      const nextIndex = puzzleIndex + 1;
+      if (nextIndex >= PUZZLE_DISCS.length) {
+        finish(finalTotalMoves);
+      } else {
+        loadPuzzle(nextIndex);
+      }
     }
   }
 
-  function finish(finalMoves: number) {
+  function finish(finalTotalMoves: number) {
     if (intervalRef.current) clearInterval(intervalRef.current);
     const secs = Math.round((now() - startedAt.current) / 1000);
     const r: GameResult = {
       completedAt: new Date().toISOString(),
-      summary: `Matched target in ${finalMoves} moves, ${secs}s`,
+      summary: `${PUZZLE_DISCS.length} puzzles solved in ${finalTotalMoves} moves, ${secs}s`,
       detail: {
-        Moves: finalMoves,
+        "Puzzles solved": PUZZLE_DISCS.length,
+        "Total moves": finalTotalMoves,
         Time: `${secs}s`,
-        "Time to first move": firstMoveMs !== null ? `${firstMoveMs} ms` : "-",
       },
     };
     setResult(r);
@@ -162,15 +181,18 @@ export function TowerGame({ onComplete }: { onComplete: (result: GameResult) => 
       onReplay={replay}
       instructions={
         <p className="text-[13px] text-muted-foreground">
-          Rearrange the {DISCS} discs across the three pegs to match the target arrangement shown above the play
-          area, in as few moves as possible. Only the top disc on a peg can move - click a peg to pick up its top
-          disc, then click another peg to drop it there.
+          Rearrange the discs across the three pegs to match the target arrangement shown above the play area, in
+          as few moves as possible. Only the top disc on a peg can move - click a peg to pick up its top disc, then
+          click another peg to drop it there. There are {PUZZLE_DISCS.length} puzzles, each with more discs than
+          the last.
         </p>
       }
     >
       <div className="flex flex-col items-center gap-4 py-4">
         <div className="flex w-full items-center justify-between text-[12px] font-medium text-muted-foreground">
-          <span>Moves: {moves}</span>
+          <span>
+            Puzzle {puzzleIndex + 1} / {PUZZLE_DISCS.length} · Moves: {puzzleMoves}
+          </span>
           <span>Time: {elapsed}s</span>
         </div>
 

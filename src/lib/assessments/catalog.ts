@@ -50,8 +50,8 @@ export const GAME_CATALOG: GameMeta[] = [
     id: "balloon",
     title: "Balloon",
     tagline: "Pump, but don't pop",
-    description: "Pump a balloon for rewards but stop before it bursts.",
-    measures: ["Risk tolerance", "Impulsivity"],
+    description: "Pump a balloon for rewards but stop before it bursts. Different colored balloons carry different risk.",
+    measures: ["Risk tolerance", "Impulsivity", "Learning from feedback"],
     duration: "2-3 minutes",
   },
   {
