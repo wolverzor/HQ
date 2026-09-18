@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "better-auth/crypto";
 import { DEFAULT_WATCHLIST } from "../src/lib/default-watchlist";
+import { seedFoeDemoData } from "./foe-demo";
 
 // Local demo data. Creates a sign-in-able demo account:
 //   email:    demo@hq.local
@@ -380,6 +381,12 @@ async function main() {
       color: "#0ea5e9",
     },
   });
+
+  // Finance Opportunity Engine demo universe. Every row it writes is
+  // flagged isDemo: true and is cleared/rewritten on each seed, so it never
+  // mixes with anything the live monitoring pipeline produces.
+  const foe = await seedFoeDemoData(prisma, user.id);
+  console.log(`FOE demo data: ${foe.firms} firms, ${foe.opportunities} opportunities (all flagged as demo).`);
 
   console.log(`Seed complete. Sign in with ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);
 }

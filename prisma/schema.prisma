@@ -32,6 +32,13 @@ model User {
   projects      Project[]
   companies     Company[]
   opportunities Opportunity[]
+
+  // Finance Opportunity Engine (per-user overlay on the global universe)
+  watchlistItems     WatchlistItem[]
+  foePreferences     FoePreferences?
+  alertSubscriptions AlertSubscription[]
+  alerts             Alert[]
+  applications       Application[]
 }
 
 model Session {
@@ -117,18 +124,18 @@ enum TaskCategory {
 }
 
 model Task {
-  id                String       @id @default(cuid())
-  title             String
-  description       String?
-  deadline          DateTime?
-  priority          Priority     @default(MEDIUM)
-  category          TaskCategory @default(PERSONAL)
-  estimatedMinutes  Int?
-  status            TaskStatus   @default(TODO)
-  order             Int          @default(0)
-  completedAt       DateTime?
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  id               String       @id @default(cuid())
+  title            String
+  description      String?
+  deadline         DateTime?
+  priority         Priority     @default(MEDIUM)
+  category         TaskCategory @default(PERSONAL)
+  estimatedMinutes Int?
+  status           TaskStatus   @default(TODO)
+  order            Int          @default(0)
+  completedAt      DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -139,7 +146,8 @@ model Task {
   opportunityId String?
   opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
 
-  timeBlocks TimeBlock[]
+  timeBlocks   TimeBlock[]
+  applications Application[]
 
   @@index([userId, status])
   @@index([userId, deadline])
@@ -150,15 +158,15 @@ model Task {
 // ---------------------------------------------------------------------------
 
 model TimeBlock {
-  id          String   @id @default(cuid())
-  title       String
-  start       DateTime
-  end         DateTime
-  color       String   @default("#6366f1")
-  completed   Boolean  @default(false)
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  title     String
+  start     DateTime
+  end       DateTime
+  color     String   @default("#6366f1")
+  completed Boolean  @default(false)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -229,18 +237,18 @@ model Company {
 }
 
 model Opportunity {
-  id             String              @id @default(cuid())
-  company        Company?            @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  id             String            @id @default(cuid())
+  company        Company?          @relation(fields: [companyId], references: [id], onDelete: SetNull)
   companyId      String?
   companyName    String
   programme      String
-  division       Division            @default(OTHER)
-  programmeType  ProgrammeType       @default(OTHER)
+  division       Division          @default(OTHER)
+  programmeType  ProgrammeType     @default(OTHER)
   location       String?
   openingDate    DateTime?
   deadline       DateTime?
   applicationUrl String?
-  status         OpportunityStatus   @default(NOT_OPEN)
+  status         OpportunityStatus @default(NOT_OPEN)
   dateApplied    DateTime?
   notes          String?
   source         String?
@@ -264,14 +272,676 @@ model Opportunity {
 }
 
 model CheckRun {
-  id          String   @id @default(cuid())
-  companyId   String
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  startedAt   DateTime @default(now())
-  finishedAt  DateTime?
-  success     Boolean  @default(false)
-  message     String
-  matchCount  Int      @default(0)
+  id         String    @id @default(cuid())
+  companyId  String
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  success    Boolean   @default(false)
+  message    String
+  matchCount Int       @default(0)
 
   @@index([companyId])
+}
+
+// ===========================================================================
+// Finance Opportunity Engine (FOE)
+//
+// The tracker above (Company / Opportunity / CheckRun) is per-user: each
+// account keeps its own watchlist and its own opportunity rows. FOE is the
+// opposite shape, deliberately: the firm universe, the programmes and the
+// canonical opportunities are GLOBAL, discovered and verified once by the
+// engine, then overlaid per user (watchlist, eligibility, alerts,
+// applications). A new account inherits the whole universe instead of
+// rediscovering the industry from scratch.
+//
+// Naming: the engine's canonical record is `FoeOpportunity` because
+// `Opportunity` is already the per-user tracker row. Its children
+// (OpportunitySource, OpportunitySnapshot) only ever belong to it, so they
+// carry no prefix. The legacy tracker is untouched; folding it into the firm
+// universe is deliberate future work, not part of this change.
+// ===========================================================================
+
+/// Where a piece of evidence came from. The first five are OFFICIAL and are
+/// the only kinds that may push an opportunity to OPEN (see
+/// src/lib/foe/sources.ts); the rest are discovery-only.
+enum SourceKind {
+  ATS
+  OFFICIAL_CAREERS_PAGE
+  OFFICIAL_EARLY_CAREERS_PAGE
+  OFFICIAL_PROGRAMME_PAGE
+  OFFICIAL_ANNOUNCEMENT
+  SITEMAP
+  HISTORICAL_URL
+  SEARCH_ENGINE
+  AGGREGATOR
+  UNIVERSITY_PAGE
+  COMMUNITY
+  MANUAL
+}
+
+enum AtsProvider {
+  GREENHOUSE
+  LEVER
+  WORKDAY
+  SMARTRECRUITERS
+  ICIMS
+  TALEO
+  AVATURE
+  SUCCESSFACTORS
+  PROPRIETARY
+  UNKNOWN
+}
+
+enum FirmCategory {
+  BULGE_BRACKET
+  ELITE_BOUTIQUE
+  INVESTMENT_BANK
+  MIDDLE_MARKET_BANK
+  PRIVATE_EQUITY
+  ASSET_MANAGER
+  HEDGE_FUND
+  MARKET_MAKER
+  PROPRIETARY_TRADING
+  QUANT
+  ALTERNATIVE_ASSET_MANAGER
+  INSTITUTIONAL_INVESTOR
+  OTHER_FINANCE
+}
+
+/// Priority changes redundancy and escalation, never whether a firm is
+/// monitored: every tier takes part in the hourly sweep.
+enum PriorityTier {
+  TIER_1
+  TIER_2
+  TIER_3
+}
+
+enum SourceHealth {
+  HEALTHY
+  DEGRADED
+  FAILING
+  BLOCKED
+  UNKNOWN
+}
+
+/// Finance areas, kept broad so FOE can widen beyond spring weeks later.
+/// Display names and groupings live in src/lib/foe/taxonomy.ts.
+enum FinanceArea {
+  INVESTMENT_BANKING
+  MERGERS_AND_ACQUISITIONS
+  ADVISORY
+  CORPORATE_FINANCE
+  CAPITAL_MARKETS
+  EQUITY_CAPITAL_MARKETS
+  DEBT_CAPITAL_MARKETS
+  LEVERAGED_FINANCE
+  RESTRUCTURING
+  MARKETS
+  SALES_AND_TRADING
+  GLOBAL_MARKETS
+  PRIVATE_EQUITY
+  ASSET_MANAGEMENT
+  INVESTMENTS
+  EQUITIES
+  FIXED_INCOME
+  RESEARCH
+  HEDGE_FUND
+  QUANTITATIVE
+  OTHER
+}
+
+/// Programme families. Spring weeks are the current focus; the rest exist so
+/// widening the engine is a data change, not a schema migration.
+enum OpportunityCategory {
+  SPRING_WEEK
+  SPRING_INSIGHT
+  INSIGHT_PROGRAMME
+  FIRST_YEAR_PROGRAMME
+  EARLY_INSIGHT
+  SUMMER_INTERNSHIP
+  OFF_CYCLE_INTERNSHIP
+  INDUSTRIAL_PLACEMENT
+  GRADUATE_PROGRAMME
+  SCHOLARSHIP
+  NETWORKING_EVENT
+  COMPETITION
+  OTHER
+}
+
+/// Explicit lifecycle. EXPECTED (predicted from history), ANNOUNCED
+/// (employer has stated a future date) and OPEN (a live official application
+/// has been verified) are three different things and must never be blurred.
+enum OpportunityState {
+  DISCOVERED
+  VERIFYING
+  EXPECTED
+  ANNOUNCED
+  OPEN
+  CLOSING_SOON
+  CLOSED
+  REJECTED
+  DUPLICATE
+  UNREACHABLE
+  MANUAL_REVIEW
+}
+
+enum VerificationMethod {
+  ATS_API
+  ATS_PAGE
+  OFFICIAL_CAREERS_PAGE
+  OFFICIAL_PROGRAMME_PAGE
+  OFFICIAL_ANNOUNCEMENT
+  MANUAL
+  NONE
+}
+
+/// False negatives are more dangerous than false positives, so UNCLEAR is a
+/// first-class verdict that stays visible by default.
+enum EligibilityVerdict {
+  ELIGIBLE
+  LIKELY_ELIGIBLE
+  UNCLEAR
+  NOT_ELIGIBLE
+}
+
+enum ScanKind {
+  FULL_SWEEP
+  HOT_WATCH
+  DISCOVERY
+  MANUAL
+}
+
+enum ScanRunStatus {
+  RUNNING
+  COMPLETED
+  PARTIAL
+  FAILED
+}
+
+/// A failed scraper is never a negative result: it is one of these.
+enum FailureKind {
+  FETCH_ERROR
+  HTTP_ERROR
+  PARSER_ERROR
+  ATS_FORMAT_CHANGE
+  CAREERS_URL_MISSING
+  BLOCKED
+  CAPTCHA
+  RATE_LIMITED
+  CRON_MISSED
+  QUEUE_STALLED
+  SEARCH_QUOTA_EXHAUSTED
+  NOTIFICATION_FAILURE
+  DATABASE_ERROR
+  ABNORMALLY_LOW_RESULTS
+}
+
+enum FailureSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum AlertChannel {
+  WHATSAPP
+  IN_APP
+  EMAIL
+  PUSH
+}
+
+enum AlertEvent {
+  PROGRAMME_ANNOUNCED
+  APPLICATIONS_OPENED
+  SEVEN_DAYS_BEFORE_OPENING
+  ONE_DAY_BEFORE_OPENING
+  DEADLINE_SOON
+}
+
+enum AlertStatus {
+  QUEUED
+  SENT
+  FAILED
+  SUPPRESSED_DUPLICATE
+}
+
+enum ApplicationStage {
+  APPLIED
+  ONLINE_ASSESSMENT
+  HIREVUE
+  INTERVIEW
+  ASSESSMENT_CENTRE
+  OFFER
+  REJECTED
+  WITHDRAWN
+}
+
+enum WatchTargetType {
+  FIRM
+  PROGRAMME
+  OPPORTUNITY
+}
+
+// ---------------------------------------------------------------------------
+// Finance firm universe: persistent, global, grows over time
+// ---------------------------------------------------------------------------
+
+model Firm {
+  id                    String         @id @default(cuid())
+  name                  String
+  /// Lowercase, punctuation-stripped name used for dedupe and lookup.
+  canonicalName         String         @unique
+  aliases               String[]       @default([])
+  websiteDomain         String?
+  careersUrl            String?
+  earlyCareersUrl       String?
+  careersSearchEndpoint String?
+  atsProvider           AtsProvider    @default(UNKNOWN)
+  atsTenant             String?
+  atsBoardId            String?
+  categories            FirmCategory[] @default([])
+  areas                 FinanceArea[]  @default([])
+  tier                  PriorityTier   @default(TIER_3)
+  active                Boolean        @default(true)
+  /// Candidate firms discovered by the engine stay unconfirmed until their
+  /// official domain and careers pages are resolved.
+  confirmed             Boolean        @default(true)
+  health                SourceHealth   @default(UNKNOWN)
+  consecutiveFailures   Int            @default(0)
+  lastScanAttemptedAt   DateTime?
+  lastScanSucceededAt   DateTime?
+  lastSourceChangeAt    DateTime?
+  notes                 String?
+  /// Separates seeded demo data from anything the live engine verified.
+  isDemo                Boolean        @default(false)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  sources       FirmSource[]
+  programmes    Programme[]
+  opportunities FoeOpportunity[]
+  scanResults   ScanResult[]
+  failures      SourceFailure[]
+  watchers      WatchlistItem[]
+
+  @@index([tier, active])
+  @@index([health])
+}
+
+model FirmSource {
+  id                  String       @id @default(cuid())
+  firmId              String
+  firm                Firm         @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  kind                SourceKind
+  url                 String
+  label               String?
+  atsProvider         AtsProvider?
+  /// Lower runs first within a firm; mirrors the source hierarchy.
+  priority            Int          @default(100)
+  active              Boolean      @default(true)
+  health              SourceHealth @default(UNKNOWN)
+  lastAttemptedAt     DateTime?
+  lastSucceededAt     DateTime?
+  lastStatusCode      Int?
+  lastContentHash     String?
+  lastChangedAt       DateTime?
+  consecutiveFailures Int          @default(0)
+  parserStatus        String?
+  blockedReason       String?
+  /// Hot watch: checked every 10 minutes instead of hourly.
+  hotWatchUntil       DateTime?
+  isDemo              Boolean      @default(false)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  scanResults        ScanResult[]
+  failures           SourceFailure[]
+  opportunitySources OpportunitySource[]
+
+  @@unique([firmId, url])
+  @@index([active, health])
+  @@index([hotWatchUntil])
+}
+
+// ---------------------------------------------------------------------------
+// Programmes: the recurring identity behind a yearly opportunity
+// ---------------------------------------------------------------------------
+
+model Programme {
+  id           String              @id @default(cuid())
+  firmId       String
+  firm         Firm                @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  name         String
+  /// Stable slug within a firm, e.g. "spring-insight-investment-banking-london".
+  canonicalKey String
+  category     OpportunityCategory @default(OTHER)
+  area         FinanceArea         @default(OTHER)
+  location     String?
+  description  String?
+  active       Boolean             @default(true)
+  isDemo       Boolean             @default(false)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  history       ProgrammeHistory[]
+  opportunities FoeOpportunity[]
+  watchers      WatchlistItem[]
+
+  @@unique([firmId, canonicalKey])
+}
+
+/// Past recruitment cycles, used to derive an expected opening window.
+/// Never presented to the user as a confirmed date.
+model ProgrammeHistory {
+  id              String    @id @default(cuid())
+  programmeId     String
+  programme       Programme @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  recruitmentYear Int
+  openedAt        DateTime?
+  deadlineAt      DateTime?
+  closedAt        DateTime?
+  applicationUrl  String?
+  source          String?
+  notes           String?
+  isDemo          Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+
+  @@unique([programmeId, recruitmentYear])
+}
+
+// ---------------------------------------------------------------------------
+// Canonical opportunities and their evidence
+// ---------------------------------------------------------------------------
+
+model FoeOpportunity {
+  id              String              @id @default(cuid())
+  /// firm + programme + year + location + category. One canonical row per
+  /// real-world programme, however many sources found it.
+  fingerprint     String              @unique
+  firmId          String
+  firm            Firm                @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  programmeId     String?
+  programme       Programme?          @relation(fields: [programmeId], references: [id], onDelete: SetNull)
+  /// Denormalised for fast list rendering.
+  firmName        String
+  programmeName   String
+  recruitmentYear Int
+  category        OpportunityCategory @default(OTHER)
+  area            FinanceArea         @default(OTHER)
+  location        String?
+  region          String?
+  description     String?
+
+  state   OpportunityState @default(DISCOVERED)
+  rolling Boolean          @default(false)
+
+  announcedAt          DateTime?
+  openingDate          DateTime?
+  /// Derived from ProgrammeHistory: a window, never a promise.
+  expectedOpeningStart DateTime?
+  expectedOpeningEnd   DateTime?
+  expectedOpeningLabel String?
+  deadline             DateTime?
+  closedAt             DateTime?
+
+  applicationUrl         String?
+  officialInfoUrl        String?
+  applicationVerifiedAt  DateTime?
+  verificationMethod     VerificationMethod @default(NONE)
+  /// 0-100. Only official sources can raise this past the OPEN threshold.
+  verificationConfidence Int                @default(0)
+  verifiedBySourceId     String?
+
+  eligibilityText String?
+  /// Undergraduate years of study the programme is open to, when stated.
+  eligibleYears   Int[]   @default([])
+
+  firstDiscoveredAt   DateTime  @default(now())
+  firstVerifiedOpenAt DateTime?
+  lastCheckedAt       DateTime?
+  lastChangedAt       DateTime?
+
+  /// Set when this row was merged into another; readers follow the pointer.
+  duplicateOfId String?
+  duplicateOf   FoeOpportunity?  @relation("Duplicates", fields: [duplicateOfId], references: [id], onDelete: SetNull)
+  duplicates    FoeOpportunity[] @relation("Duplicates")
+
+  isDemo    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sources      OpportunitySource[]
+  snapshots    OpportunitySnapshot[]
+  watchers     WatchlistItem[]
+  alerts       Alert[]
+  applications Application[]
+
+  @@index([state, openingDate])
+  @@index([state, deadline])
+  @@index([recruitmentYear, category])
+  @@index([firstVerifiedOpenAt])
+}
+
+/// Every place an opportunity was seen. Third-party rows are kept as
+/// evidence but can never justify OPEN on their own.
+model OpportunitySource {
+  id            String         @id @default(cuid())
+  opportunityId String
+  opportunity   FoeOpportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  firmSourceId  String?
+  firmSource    FirmSource?    @relation(fields: [firmSourceId], references: [id], onDelete: SetNull)
+  kind          SourceKind
+  url           String
+  title         String?
+  excerpt       String?
+  contentHash   String?
+  /// Derived from `kind` at write time; denormalised so queries stay simple.
+  isOfficial    Boolean        @default(false)
+  confidence    Int            @default(0)
+  discoveredAt  DateTime       @default(now())
+  lastSeenAt    DateTime       @default(now())
+  isDemo        Boolean        @default(false)
+
+  @@unique([opportunityId, url])
+  @@index([opportunityId, isOfficial])
+}
+
+/// Content hashes and state over time, so a change can be diffed rather than
+/// the whole page re-read by an LLM every hour.
+model OpportunitySnapshot {
+  id            String           @id @default(cuid())
+  opportunityId String
+  opportunity   FoeOpportunity   @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  capturedAt    DateTime         @default(now())
+  state         OpportunityState
+  contentHash   String?
+  changeKind    String?
+  summary       String?
+  isDemo        Boolean          @default(false)
+
+  @@index([opportunityId, capturedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Monitoring runs and health
+// ---------------------------------------------------------------------------
+
+model ScanRun {
+  id                  String        @id @default(cuid())
+  kind                ScanKind
+  status              ScanRunStatus @default(RUNNING)
+  startedAt           DateTime      @default(now())
+  finishedAt          DateTime?
+  firmsPlanned        Int           @default(0)
+  firmsScanned        Int           @default(0)
+  sourcesScanned      Int           @default(0)
+  sourcesChanged      Int           @default(0)
+  sourcesFailed       Int           @default(0)
+  candidatesFound     Int           @default(0)
+  opportunitiesOpened Int           @default(0)
+  message             String?
+  isDemo              Boolean       @default(false)
+
+  results  ScanResult[]
+  failures SourceFailure[]
+
+  @@index([kind, startedAt])
+}
+
+model ScanResult {
+  id           String      @id @default(cuid())
+  scanRunId    String
+  scanRun      ScanRun     @relation(fields: [scanRunId], references: [id], onDelete: Cascade)
+  firmId       String?
+  firm         Firm?       @relation(fields: [firmId], references: [id], onDelete: SetNull)
+  firmSourceId String?
+  firmSource   FirmSource? @relation(fields: [firmSourceId], references: [id], onDelete: SetNull)
+  url          String
+  ok           Boolean     @default(false)
+  httpStatus   Int?
+  changed      Boolean     @default(false)
+  contentHash  String?
+  candidates   Int         @default(0)
+  durationMs   Int         @default(0)
+  message      String?
+  createdAt    DateTime    @default(now())
+
+  @@index([scanRunId, ok])
+}
+
+model SourceFailure {
+  id           String          @id @default(cuid())
+  scanRunId    String?
+  scanRun      ScanRun?        @relation(fields: [scanRunId], references: [id], onDelete: SetNull)
+  firmId       String?
+  firm         Firm?           @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  firmSourceId String?
+  firmSource   FirmSource?     @relation(fields: [firmSourceId], references: [id], onDelete: Cascade)
+  kind         FailureKind
+  severity     FailureSeverity @default(WARNING)
+  message      String
+  httpStatus   Int?
+  detectedAt   DateTime        @default(now())
+  resolvedAt   DateTime?
+  isDemo       Boolean         @default(false)
+
+  @@index([resolvedAt, severity])
+}
+
+/// Advisory lock so an hourly sweep can never overlap itself.
+model ScanLock {
+  key        String   @id
+  runId      String?
+  holder     String?
+  acquiredAt DateTime @default(now())
+  expiresAt  DateTime
+}
+
+// ---------------------------------------------------------------------------
+// Per-user overlay: watchlist, preferences, alerts, applications
+// ---------------------------------------------------------------------------
+
+model WatchlistItem {
+  id             String          @id @default(cuid())
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  targetType     WatchTargetType
+  firmId         String?
+  firm           Firm?           @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  programmeId    String?
+  programme      Programme?      @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  opportunityId  String?
+  opportunity    FoeOpportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  notifyWhatsApp Boolean         @default(true)
+  notifyInApp    Boolean         @default(true)
+  notifyEmail    Boolean         @default(false)
+  createdAt      DateTime        @default(now())
+
+  @@unique([userId, firmId])
+  @@unique([userId, programmeId])
+  @@unique([userId, opportunityId])
+  @@index([userId, targetType])
+}
+
+model FoePreferences {
+  id                String                @id @default(cuid())
+  userId            String                @unique
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  university        String?
+  degree            String?
+  degreeLengthYears Int?
+  currentYear       Int?
+  graduationYear    Int?
+  nationality       String?
+  workEligibility   String?
+  preferredRegions  String[]              @default([])
+  interests         FinanceArea[]         @default([])
+  categories        OpportunityCategory[] @default([])
+  /// Only controls the filter drawer's default selection. UNCLEAR results are
+  /// never silently dropped, and the UI says when they are being hidden.
+  showUnclear       Boolean               @default(true)
+  whatsappNumber    String?
+  whatsappOptInAt   DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+}
+
+model AlertSubscription {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel   AlertChannel
+  event     AlertEvent
+  enabled   Boolean      @default(false)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@unique([userId, channel, event])
+}
+
+model Alert {
+  id            String         @id @default(cuid())
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunityId String
+  opportunity   FoeOpportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  channel       AlertChannel
+  event         AlertEvent
+  status        AlertStatus    @default(QUEUED)
+  /// user + opportunity + event + channel. This unique index is what stops
+  /// five sources becoming five WhatsApp messages.
+  dedupeKey     String         @unique
+  body          String?
+  queuedAt      DateTime       @default(now())
+  sentAt        DateTime?
+  readAt        DateTime?
+  failureReason String?
+  isDemo        Boolean        @default(false)
+
+  @@index([userId, status])
+  @@index([userId, readAt])
+}
+
+model Application {
+  id            String           @id @default(cuid())
+  userId        String
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunityId String?
+  opportunity   FoeOpportunity?  @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  /// Kept even if the canonical opportunity is later merged or removed.
+  firmName      String
+  programmeName String
+  stage         ApplicationStage @default(APPLIED)
+  appliedAt     DateTime         @default(now())
+  deadline      DateTime?
+  notes         String?
+  /// The HQ task created alongside, so FOE feeds the existing task and
+  /// calendar system rather than duplicating it.
+  taskId        String?
+  task          Task?            @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@unique([userId, opportunityId])
+  @@index([userId, stage])
 }
