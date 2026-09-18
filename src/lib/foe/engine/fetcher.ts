@@ -139,9 +139,16 @@ export async function fetchSource(
     }
 
     const body = await res.text();
-    const text = extractText(body);
 
-    const block = detectBlockPage(text);
+    // JSON sources (ATS boards) must survive intact: running an API response
+    // through the HTML stripper would turn it into unparseable prose. Only
+    // markup gets flattened.
+    const contentType = res.headers.get("content-type") ?? "";
+    const isJson = contentType.includes("json") || /^\s*[[{]/.test(body.slice(0, 200));
+    const text = isJson ? body : extractText(body);
+
+    // A bot wall is always an HTML page, so this check only applies there.
+    const block = isJson ? null : detectBlockPage(text);
     if (block) {
       return { ok: false, status: res.status, kind: block.kind, transient: false, message: block.reason };
     }

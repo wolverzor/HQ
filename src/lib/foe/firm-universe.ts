@@ -12,9 +12,10 @@
  * here assumes the list is complete.
  */
 
-import type { FirmCategory, PrismaClient, PriorityTier, SourceKind } from "@prisma/client";
+import type { AtsProvider, FirmCategory, PrismaClient, PriorityTier, SourceKind } from "@prisma/client";
 import { DEFAULT_WATCHLIST } from "@/lib/default-watchlist";
 import { canonicalFirmName } from "./fingerprint";
+import { greenhouseJobsUrl } from "./engine/adapters/greenhouse";
 
 interface UniverseEntry {
   name: string;
@@ -109,6 +110,29 @@ export function classify(name: string): UniverseEntry {
   return CLASSIFICATION[canonicalFirmName(name)] ?? { name, categories: ["OTHER_FINANCE"], tier: "TIER_3" };
 }
 
+
+/**
+ * Public ATS boards, discovered by probing each provider's public endpoint and
+ * confirming it returns real jobs.
+ *
+ * These are worth far more than a careers page. A board returns titles,
+ * locations and apply links as structured data, so FOE stops guessing the
+ * division from surrounding prose — and a posting's presence on the board is
+ * itself evidence the application is live.
+ *
+ * Verified live when added. A board that later disappears shows up as a source
+ * failure rather than as an absence of opportunities, which is the point.
+ */
+const ATS_BOARDS: { firm: string; provider: AtsProvider; token: string }[] = [
+  { firm: "Jane Street", provider: "GREENHOUSE", token: "janestreet" },
+  { firm: "Point72", provider: "GREENHOUSE", token: "point72" },
+  { firm: "IMC Trading", provider: "GREENHOUSE", token: "imc" },
+  { firm: "Flow Traders", provider: "GREENHOUSE", token: "flowtraders" },
+  { firm: "Qube Research & Technologies", provider: "GREENHOUSE", token: "quberesearchandtechnologies" },
+  { firm: "Optiver", provider: "GREENHOUSE", token: "optiver" },
+  { firm: "Marshall Wace", provider: "GREENHOUSE", token: "marshallwace" },
+];
+
 function domainOf(website: string): string | null {
   try {
     return new URL(website).hostname.replace(/^www\./, "");
@@ -180,6 +204,28 @@ export async function syncFirmUniverse(prisma: PrismaClient): Promise<SyncResult
 
     if (existing) firmsUpdated += 1;
     else firmsCreated += 1;
+
+    // An ATS board, where the firm has one, is the highest-confidence source
+    // available and runs first.
+    const board = ATS_BOARDS.find((b) => canonicalFirmName(b.firm) === canonicalName);
+    if (board) {
+      await prisma.firm.update({
+        where: { id: firm.id },
+        data: { atsProvider: board.provider, atsBoardId: board.token },
+      });
+      await prisma.firmSource.upsert({
+        where: { firmId_url: { firmId: firm.id, url: greenhouseJobsUrl(board.token) } },
+        create: {
+          firmId: firm.id,
+          kind: "ATS",
+          url: greenhouseJobsUrl(board.token),
+          atsProvider: board.provider,
+          priority: 5,
+          label: `${board.provider} board`,
+        },
+        update: {},
+      });
+    }
 
     for (const source of sourcesFor(entry, listed.careersUrl)) {
       const created = await prisma.firmSource.upsert({
