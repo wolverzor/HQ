@@ -74,6 +74,27 @@ function DropdownMenuCheckboxItem({
   );
 }
 
+function DropdownMenuRadioItem({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.RadioItem>) {
+  return (
+    <DropdownMenuPrimitive.RadioItem
+      className={cn(
+        "relative flex cursor-pointer select-none items-center gap-2 rounded-lg py-2 pl-8 pr-2.5 text-[13.5px] text-foreground outline-none transition-colors focus:bg-surface-hover",
+        className,
+      )}
+      {...props}
+    >
+      <DropdownMenuPrimitive.ItemIndicator className="absolute left-2.5 flex items-center">
+        <Check className="size-3.5 text-primary" />
+      </DropdownMenuPrimitive.ItemIndicator>
+      {children}
+    </DropdownMenuPrimitive.RadioItem>
+  );
+}
+
 function DropdownMenuLabel({ className, ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Label>) {
   return (
     <DropdownMenuPrimitive.Label
@@ -97,4 +118,5 @@ export {
   DropdownMenuSeparator,
   DropdownMenuGroup,
   DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
 };

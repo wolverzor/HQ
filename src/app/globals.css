@@ -179,3 +179,18 @@ body {
 .hq-animate-pop {
   animation: hq-pop 0.14s cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+/* Right-side drawer (src/components/ui/sheet.tsx) */
+@keyframes hq-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.hq-animate-slide-in {
+  animation: hq-slide-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}

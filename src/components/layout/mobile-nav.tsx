@@ -11,8 +11,8 @@ export function MobileNav() {
   const pathname = usePathname();
   const { open } = useQuickAdd();
 
-  const left = NAV_ITEMS.slice(0, 2);
-  const right = NAV_ITEMS.slice(2);
+  const left = NAV_ITEMS.slice(0, 3);
+  const right = NAV_ITEMS.slice(3);
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-around border-t border-border bg-surface/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
@@ -48,12 +48,12 @@ function NavLink({
     <Link
       href={item.href}
       className={cn(
-        "flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors",
+        "flex min-w-0 flex-1 flex-col items-center gap-1 px-0.5 py-2.5 text-[10.5px] font-medium transition-colors",
         active ? "text-primary" : "text-subtle-foreground",
       )}
     >
       <Icon className="size-[21px]" strokeWidth={active ? 2.4 : 2} />
-      {item.label}
+      {item.shortLabel}
     </Link>
   );
 }
