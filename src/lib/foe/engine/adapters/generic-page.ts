@@ -13,8 +13,14 @@ function excerptAround(text: string, phrase: string, radius = 160): string | nul
   return `${start > 0 ? "..." : ""}${text.slice(start, end).trim()}${end < text.length ? "..." : ""}`;
 }
 
+/**
+ * "spring insight" -> "Spring Insight".
+ *
+ * The word boundary matters: without it every letter is uppercased and each
+ * programme name arrives SHOUTING.
+ */
 function titleCase(s: string): string {
-  return s.replace(/\w/g, (c) => c.toUpperCase());
+  return s.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /**

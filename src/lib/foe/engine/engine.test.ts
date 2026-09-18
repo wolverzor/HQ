@@ -352,3 +352,14 @@ test("the same programme named twice on a page is still one candidate", () => {
   const candidates = parse("Spring Week 2027. Read about the Spring Week. Apply now to our Spring Week.");
   assert.equal(candidates.length, 1);
 });
+
+test("programme names from a page are title-cased, not shouted", () => {
+  // Regression: a lost word-boundary anchor made this uppercase every letter,
+  // and a later bad edit replaced it with a control character that matched
+  // nothing at all, so names arrived in raw lowercase. Both are silent.
+  const [candidate] = parse("Applications are open for our spring insight programme. Apply now.");
+  assert.ok(candidate);
+  assert.equal(candidate.programmeName, "Spring Insight Programme");
+  assert.notEqual(candidate.programmeName, candidate.programmeName.toUpperCase());
+  assert.notEqual(candidate.programmeName, candidate.programmeName.toLowerCase());
+});

@@ -16,6 +16,7 @@ import type { AtsProvider, FirmCategory, PrismaClient, PriorityTier, SourceKind 
 import { DEFAULT_WATCHLIST } from "@/lib/default-watchlist";
 import { canonicalFirmName } from "./fingerprint";
 import { greenhouseJobsUrl } from "./engine/adapters/greenhouse";
+import { PROGRAMME_SOURCES } from "./programme-sources";
 
 interface UniverseEntry {
   name: string;
@@ -224,6 +225,17 @@ export async function syncFirmUniverse(prisma: PrismaClient): Promise<SyncResult
           label: `${board.provider} board`,
         },
         update: {},
+      });
+    }
+
+    // Curated programme pages: verified URLs that actually list programmes,
+    // rather than the careers landing page the roster ships with.
+    const curated = PROGRAMME_SOURCES.filter((c) => canonicalFirmName(c.firm) === canonicalName);
+    for (const c of curated) {
+      await prisma.firmSource.upsert({
+        where: { firmId_url: { firmId: firm.id, url: c.url } },
+        create: { firmId: firm.id, kind: c.kind, url: c.url, priority: c.priority, label: c.label },
+        update: { priority: c.priority, label: c.label },
       });
     }
 
