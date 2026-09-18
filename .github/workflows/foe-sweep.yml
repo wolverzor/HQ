@@ -58,6 +58,10 @@ jobs:
             echo "APP_URL / CRON_SECRET secrets are not set - skipping."
             exit 0
           fi
+          # A trailing slash in APP_URL builds "host//api/..." which Vercel
+          # answers with a 308 to the single-slash form. Cheaper to tolerate
+          # here than to make everyone remember the rule.
+          APP_URL="${APP_URL%/}"
           # 409 means a run is already in flight. That is the overlap guard
           # doing its job, not a failure, so it is not treated as an error.
           status=$(curl --silent --show-error --max-time 300 --output /tmp/foe.json --write-out "%{http_code}" \
