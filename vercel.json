@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/check-all",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/foe/cron/sweep",
+      "schedule": "0 6 * * *"
     }
   ]
 }

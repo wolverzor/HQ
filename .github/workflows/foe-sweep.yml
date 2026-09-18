@@ -1,0 +1,75 @@
+# Finance Opportunity Engine schedule.
+#
+# Two cadences, per the monitoring model:
+#   * the full universe sweep, hourly
+#   * the hot watch, every 10 minutes, for programmes about to open
+#
+# Vercel's Hobby plan only allows one cron a day, so GitHub Actions drives both
+# and vercel.json keeps a daily run as a backstop.
+#
+# Needs two repository secrets (Settings -> Secrets and variables -> Actions):
+#   APP_URL      e.g. https://hq-yourname.vercel.app  (no trailing slash)
+#   CRON_SECRET  the same value as the CRON_SECRET env var on Vercel
+name: FOE monitoring
+
+on:
+  schedule:
+    # Full sweep on the hour.
+    - cron: "0 * * * *"
+    # Hot watch every 10 minutes. GitHub can delay scheduled runs under load,
+    # which is tolerated: a late hot watch still beats waiting for the hour.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Which run to trigger"
+        required: true
+        default: sweep
+        type: choice
+        options: [sweep, hot-watch]
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Pick endpoint
+        id: pick
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          if [ -n "$MODE" ]; then
+            endpoint="$MODE"
+          elif [ "$SCHEDULE" = "0 * * * *" ]; then
+            endpoint="sweep"
+          else
+            endpoint="hot-watch"
+          fi
+          echo "endpoint=$endpoint" >> "$GITHUB_OUTPUT"
+
+      - name: Run
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          ENDPOINT: ${{ steps.pick.outputs.endpoint }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "APP_URL / CRON_SECRET secrets are not set - skipping."
+            exit 0
+          fi
+          # 409 means a run is already in flight. That is the overlap guard
+          # doing its job, not a failure, so it is not treated as an error.
+          status=$(curl --silent --show-error --max-time 300 --output /tmp/foe.json --write-out "%{http_code}" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/foe/cron/$ENDPOINT")
+          cat /tmp/foe.json
+          echo
+          if [ "$status" = "409" ]; then
+            echo "A $ENDPOINT run is already in progress - skipping this slot."
+            exit 0
+          fi
+          if [ "$status" != "200" ]; then
+            echo "FOE $ENDPOINT failed with HTTP $status"
+            exit 1
+          fi
