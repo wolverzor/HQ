@@ -9,23 +9,28 @@ import { ThemeToggle } from "./theme-toggle";
 import { UserMenu, type ShellUser } from "./user-menu";
 import { useQuickAdd } from "@/components/tasks/quick-add-context";
 
+/**
+ * The sidebar draws from its own token set (`--sidebar-*`) rather than the
+ * workspace surface tokens. That separation is what lets the Navy theme put a
+ * dark rail next to a light working area without darkening the whole app.
+ */
 export function Sidebar({ user }: { user: ShellUser }) {
   const pathname = usePathname();
   const { open } = useQuickAdd();
 
   return (
-    <aside className="hidden md:flex md:w-[248px] md:shrink-0 md:flex-col md:border-r md:border-border md:bg-surface md:px-3 md:py-4">
+    <aside className="hidden md:flex md:w-[248px] md:shrink-0 md:flex-col md:border-r md:border-sidebar-border md:bg-sidebar md:px-3 md:py-4">
       <div className="flex items-center gap-2 px-3 py-2">
-        <div className="flex size-8 items-center justify-center rounded-[10px] bg-primary text-[13px] font-bold tracking-tight text-primary-foreground">
+        <div className="flex size-8 items-center justify-center rounded-[10px] bg-sidebar-accent text-[13px] font-bold tracking-tight text-sidebar-accent-foreground">
           HQ
         </div>
-        <span className="text-[15px] font-semibold tracking-tight">HQ</span>
+        <span className="text-[15px] font-semibold tracking-tight text-sidebar-foreground">HQ</span>
       </div>
 
       <button
         type="button"
         onClick={() => open()}
-        className="mx-1 mt-4 flex items-center gap-2 rounded-xl bg-primary px-3.5 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary-hover hover:shadow-md active:scale-[0.98] cursor-pointer"
+        className="mx-1 mt-4 flex items-center gap-2 rounded-xl bg-sidebar-accent px-3.5 py-2.5 text-sm font-medium text-sidebar-accent-foreground shadow-sm transition-all hover:opacity-90 hover:shadow-md active:scale-[0.98] cursor-pointer"
       >
         <Plus className="size-4" strokeWidth={2.5} />
         Quick add task
@@ -42,18 +47,18 @@ export function Sidebar({ user }: { user: ShellUser }) {
               className={cn(
                 "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-medium transition-colors",
                 active
-                  ? "bg-primary-tint text-primary"
-                  : "text-muted-foreground hover:bg-surface-hover hover:text-foreground",
+                  ? "bg-sidebar-active text-sidebar-active-foreground"
+                  : "text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground",
               )}
             >
               <Icon
                 className={cn(
-                  "size-[18px] transition-colors",
-                  active ? "text-primary" : "text-subtle-foreground group-hover:text-foreground",
+                  "size-[18px] shrink-0 transition-colors",
+                  active ? "text-sidebar-active-foreground" : "text-sidebar-muted group-hover:text-sidebar-foreground",
                 )}
                 strokeWidth={2}
               />
-              {item.label}
+              <span className="truncate">{item.label}</span>
             </Link>
           );
         })}
@@ -61,7 +66,7 @@ export function Sidebar({ user }: { user: ShellUser }) {
 
       <div className="mt-auto flex items-center gap-1 pt-4">
         <UserMenu user={user} />
-        <ThemeToggle className="shrink-0" />
+        <ThemeToggle className="shrink-0 text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground" />
       </div>
     </aside>
   );

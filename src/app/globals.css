@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
-@custom-variant dark (&:where(.dark, .dark *));
+/* Midnight is a dark theme, so `dark:` utilities must apply there too. */
+@custom-variant dark (&:where(.dark, .dark *, .midnight, .midnight *));
 
 :root {
   --background: #fafafa;
@@ -28,6 +29,18 @@
   --info-tint: #f0f9ff;
 
   --ring: #4f46e5;
+
+  /* The sidebar is themed separately from the workspace, which is what lets
+     the Navy theme pair a dark rail with a light working area. */
+  --sidebar: #ffffff;
+  --sidebar-hover: #f5f5f7;
+  --sidebar-foreground: #18181b;
+  --sidebar-muted: #71717a;
+  --sidebar-border: #e8e8ec;
+  --sidebar-active: #eef2ff;
+  --sidebar-active-foreground: #4f46e5;
+  --sidebar-accent: #4f46e5;
+  --sidebar-accent-foreground: #ffffff;
 
   --radius-sm: 0.5rem;
   --radius-md: 0.75rem;
@@ -68,11 +81,90 @@
 
   --ring: #818cf8;
 
+  --sidebar: #131315;
+  --sidebar-hover: #1a1a1d;
+  --sidebar-foreground: #f4f4f5;
+  --sidebar-muted: #a1a1aa;
+  --sidebar-border: #232327;
+  --sidebar-active: #1e1e3f;
+  --sidebar-active-foreground: #a5b4fc;
+  --sidebar-accent: #818cf8;
+  --sidebar-accent-foreground: #0b0b0d;
+
   --shadow-color: 240 40% 2%;
   --shadow-sm: 0 1px 2px 0 hsl(var(--shadow-color) / 0.3);
   --shadow-md: 0 4px 12px -2px hsl(var(--shadow-color) / 0.45), 0 2px 4px -2px hsl(var(--shadow-color) / 0.3);
   --shadow-lg: 0 12px 32px -8px hsl(var(--shadow-color) / 0.55), 0 4px 8px -4px hsl(var(--shadow-color) / 0.35);
   --shadow-float: 0 20px 48px -12px hsl(var(--shadow-color) / 0.65);
+}
+
+/* ---------------------------------------------------------------------------
+   Navy — the reference look: a deep navy rail against a light workspace.
+   Only the sidebar tokens are overridden; everything else inherits the light
+   theme, which is the whole point of splitting them.
+   --------------------------------------------------------------------------- */
+.navy {
+  --sidebar: #101b33;
+  --sidebar-hover: #1b2947;
+  --sidebar-foreground: #f1f5f9;
+  --sidebar-muted: #94a6c4;
+  --sidebar-border: #1e2c49;
+  --sidebar-active: #22335a;
+  --sidebar-active-foreground: #ffffff;
+  --sidebar-accent: #3b5bdb;
+  --sidebar-accent-foreground: #ffffff;
+
+  --primary: #2544a8;
+  --primary-hover: #1d3789;
+  --primary-tint: #eaeefb;
+  --ring: #2544a8;
+}
+
+/* ---------------------------------------------------------------------------
+   Midnight — navy all the way through, for working at night.
+   --------------------------------------------------------------------------- */
+.midnight {
+  --background: #070d1a;
+  --surface: #0d1526;
+  --surface-hover: #141e33;
+  --surface-inset: #111b2f;
+  --border: #1c2942;
+  --border-strong: #27374f;
+  --foreground: #e7edf7;
+  --muted-foreground: #93a3bd;
+  --subtle-foreground: #64748b;
+
+  --primary: #7aa2f7;
+  --primary-hover: #9ab8ff;
+  --primary-foreground: #070d1a;
+  --primary-tint: #16233d;
+
+  --danger: #fb7185;
+  --danger-tint: #2d1420;
+  --warning: #fbbf24;
+  --warning-tint: #2c2210;
+  --success: #4ade80;
+  --success-tint: #0f2a21;
+  --info: #38bdf8;
+  --info-tint: #0d2436;
+
+  --ring: #7aa2f7;
+
+  --sidebar: #0a1120;
+  --sidebar-hover: #15203a;
+  --sidebar-foreground: #e7edf7;
+  --sidebar-muted: #8da0bf;
+  --sidebar-border: #1a2740;
+  --sidebar-active: #1d2c4c;
+  --sidebar-active-foreground: #bdd0ff;
+  --sidebar-accent: #7aa2f7;
+  --sidebar-accent-foreground: #070d1a;
+
+  --shadow-color: 220 60% 2%;
+  --shadow-sm: 0 1px 2px 0 hsl(var(--shadow-color) / 0.35);
+  --shadow-md: 0 4px 12px -2px hsl(var(--shadow-color) / 0.5), 0 2px 4px -2px hsl(var(--shadow-color) / 0.35);
+  --shadow-lg: 0 12px 32px -8px hsl(var(--shadow-color) / 0.6), 0 4px 8px -4px hsl(var(--shadow-color) / 0.4);
+  --shadow-float: 0 20px 48px -12px hsl(var(--shadow-color) / 0.7);
 }
 
 @theme inline {
@@ -102,6 +194,16 @@
 
   --color-ring: var(--ring);
 
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-hover: var(--sidebar-hover);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-active-foreground: var(--sidebar-active-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
@@ -118,8 +220,13 @@ html {
   color-scheme: light;
 }
 
-html.dark {
+html.dark,
+html.midnight {
   color-scheme: dark;
+}
+
+html.navy {
+  color-scheme: light;
 }
 
 body {

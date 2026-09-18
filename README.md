@@ -74,7 +74,35 @@ See [`prisma/schema.prisma`](prisma/schema.prisma). Core entities:
   it's real) fields, plus `source`/`sourceUrl`/`officialUrl`/`lastVerifiedAt`
 - **CheckRun** — a log entry for each discovery check against a company
 
-Every row belongs to a user. API routes read the user from the session
+### Finance Opportunity Engine (FOE)
+
+FOE's tables are the opposite shape and deliberately so — the firm universe and
+the opportunities it verifies are **global**, discovered once and overlaid per
+user, so a new account inherits the whole universe:
+
+- **Firm / FirmSource** — the persistent finance firm universe and every source
+  monitored for it (ATS, careers page, early-careers page, programme page,
+  sitemap, announcement). `FirmSource.hotWatchUntil` marks a source for
+  10-minute checks instead of hourly.
+- **Programme / ProgrammeHistory** — the recurring identity behind a yearly
+  opportunity, and its past cycles, which produce an *expected opening window*.
+- **FoeOpportunity** — the canonical opportunity, keyed by a `fingerprint`
+  (firm + programme + year + category + location) so the same programme found
+  six ways is one row. Its `state` distinguishes `EXPECTED` (predicted from
+  history), `ANNOUNCED` (the employer stated a date) and `OPEN` (a live
+  application was verified on an official source). **These never blur.**
+- **OpportunitySource / OpportunitySnapshot** — every place it was seen, marked
+  official or discovery, plus content hashes over time.
+- **ScanRun / ScanResult / SourceFailure / ScanLock** — monitoring runs, health,
+  and a lease that stops two sweeps overlapping.
+- **WatchlistItem / FoePreferences / AlertSubscription / Alert / Application** —
+  the per-user overlay. `Alert.dedupeKey` is unique, so the database itself
+  prevents one programme becoming six WhatsApp messages.
+
+The rules live as pure, tested modules in
+[`src/lib/foe/`](src/lib/foe) — run them with `npm test`.
+
+Every non-FOE row belongs to a user. API routes read the user from the session
 ([`src/lib/session.ts`](src/lib/session.ts)), scope every query by it, and
 check that any linked id in a request body (project, task, opportunity,
 company) belongs to the same user.
@@ -98,6 +126,34 @@ company) belongs to the same user.
   recorded as new opportunities tagged **Needs Verification** — HQ never
   invents a deadline, opening date, or marks something **Confirmed Open** on
   its own. See [`src/lib/discovery.ts`](src/lib/discovery.ts).
+- **FOE** (`Finance Opportunities` in the sidebar) is the front door of the
+  opportunities section; the original spreadsheet tracker and company watchlist
+  are preserved at `/opportunities/tracker`. Clicking **Mark applied** on a FOE
+  opportunity creates an `Application` *and* an HQ task, so FOE feeds the
+  existing task/calendar system rather than duplicating it.
+- FOE only shows an opportunity as **OPEN** once a live application has been
+  verified on the employer's own domain or a known ATS. A third-party tracker or
+  search result can raise a candidate but never verify one
+  ([`src/lib/foe/status.ts`](src/lib/foe/status.ts)). A source that could not be
+  reached becomes `UNREACHABLE` — never "no opportunities found".
+- **The sweep** runs hourly (`/api/foe/cron/sweep`) over every source in the
+  global universe, and a **hot watch** runs every 10 minutes
+  (`/api/foe/cron/hot-watch`) over firms whose programme is about to open. Both
+  are driven by `.github/workflows/foe-sweep.yml`; a database lease stops two
+  runs overlapping, and a 409 response means "already running", not an error.
+  See [`src/lib/foe/engine/`](src/lib/foe/engine).
+- Each source check is conditional (ETag / If-Modified-Since) and hash-compared,
+  so an unchanged page costs almost nothing and is never re-analysed. Failures
+  are classified — blocked, missing URL, rate limited, CAPTCHA — and surfaced in
+  the health indicator instead of becoming a silent zero.
+- `POST /api/foe/universe/sync` (idempotent) builds the global firm universe
+  from [`src/lib/foe/firm-universe.ts`](src/lib/foe/firm-universe.ts).
+- **Themes**: Light, Dark, Navy and Midnight, picked from the sidebar. Navy puts
+  a deep navy rail beside a light workspace; the sidebar has its own
+  `--sidebar-*` tokens so it can be themed independently.
+- `npm run db:seed` also seeds a FOE demo universe (22 firms, 28 opportunities)
+  with **every row flagged `isDemo: true`**, so sample programmes can never be
+  mistaken for live openings. See [`prisma/foe-demo.ts`](prisma/foe-demo.ts).
 - Every new account starts with a broad default watchlist (~50 companies)
   spanning investment banking, private equity, asset management, and sales &
   trading / hedge funds / quant — see

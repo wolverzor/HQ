@@ -40,7 +40,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${inter.variable} h-full`} suppressHydrationWarning>
       <body className="min-h-full antialiased">
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+          // Navy and Midnight are full themes, not variants of dark, so they
+          // have to be declared for next-themes to apply their class.
+          themes={["light", "dark", "navy", "midnight"]}
+        >
           <QueryProvider>
             {children}
             <Toaster position="bottom-right" richColors closeButton />

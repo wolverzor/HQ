@@ -42,7 +42,14 @@ export function UserMenu({ user, compact = false }: { user: ShellUser; compact?:
   }
 
   const avatar = (
-    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-tint text-[12px] font-semibold text-primary">
+    <span
+      className={cn(
+        "flex size-8 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold",
+        // In the desktop sidebar this sits on the sidebar surface, which the
+        // Navy theme makes dark while the workspace stays light.
+        compact ? "bg-primary-tint text-primary" : "bg-sidebar-active text-sidebar-active-foreground",
+      )}
+    >
       {initials(user)}
     </span>
   );
@@ -54,18 +61,20 @@ export function UserMenu({ user, compact = false }: { user: ShellUser; compact?:
           type="button"
           aria-label="Account menu"
           className={cn(
-            "flex items-center gap-2.5 rounded-xl text-left transition-colors hover:bg-surface-hover cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            compact ? "p-0.5 rounded-full" : "min-w-0 flex-1 px-2 py-1.5",
+            "flex items-center gap-2.5 rounded-xl text-left transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            compact ? "rounded-full p-0.5 hover:bg-surface-hover" : "min-w-0 flex-1 px-2 py-1.5 hover:bg-sidebar-hover",
           )}
         >
           {avatar}
           {!compact && (
             <>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-medium">{user.name || user.email}</span>
-                <span className="block truncate text-[11.5px] text-subtle-foreground">{user.email}</span>
+                <span className="block truncate text-[13px] font-medium text-sidebar-foreground">
+                  {user.name || user.email}
+                </span>
+                <span className="block truncate text-[11.5px] text-sidebar-muted">{user.email}</span>
               </span>
-              <ChevronsUpDown className="size-3.5 shrink-0 text-subtle-foreground" />
+              <ChevronsUpDown className="size-3.5 shrink-0 text-sidebar-muted" />
             </>
           )}
         </button>
