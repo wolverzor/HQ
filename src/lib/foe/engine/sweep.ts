@@ -25,6 +25,7 @@ import { analyseChange, contentHash } from "./content";
 import { adapterFor, type AdapterFirm, type AdapterSource } from "./adapters";
 import { ingestCandidate } from "./dedupe";
 import { cronLooksMissed, healthAfterFailure, healthAfterSuccess, isAbnormallyLow, severityFor } from "./health";
+import { syncFirmUniverse } from "../firm-universe";
 
 export interface SweepOptions {
   prisma?: PrismaClient;
@@ -346,7 +347,27 @@ async function runSweep(options: SweepOptions, hotWatchOnly: boolean): Promise<S
   const run = await prisma.scanRun.create({ data: { kind, status: "RUNNING", startedAt: now } });
 
   try {
-    if (!hotWatchOnly) await refreshHotWatch(prisma, now);
+    if (!hotWatchOnly) {
+      // Keep the universe in step with the roster in code. It is idempotent and
+      // costs ~50 upserts, which is nothing next to the crawl that follows — and
+      // it means a fresh deployment populates itself on the first sweep instead
+      // of sitting empty until somebody remembers to call the sync endpoint by
+      // hand. A failure here must not abort the sweep: an out-of-date universe
+      // is still worth crawling.
+      try {
+        await syncFirmUniverse(prisma);
+      } catch (error) {
+        await prisma.sourceFailure.create({
+          data: {
+            scanRunId: run.id,
+            kind: "DATABASE_ERROR",
+            severity: "WARNING",
+            message: `Could not sync the firm universe: ${error instanceof Error ? error.message : "unknown error"}`,
+          },
+        });
+      }
+      await refreshHotWatch(prisma, now);
+    }
 
     const sources = await prisma.firmSource.findMany({
       where: {

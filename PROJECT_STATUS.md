@@ -249,13 +249,12 @@ including a real end-to-end discovery check against a live careers page.
 
 - **Deployed to Vercel** (production builds recorded from 17 September). Google
   sign-in still needs an OAuth client from Google Cloud Console.
-- **FOE needs two things in production before it does anything**:
-  1. `POST /api/foe/universe/sync` once, to build the global firm universe.
-     Until then the dashboard is empty, because production has no demo data —
-     by design.
-  2. Repository secrets `APP_URL` and `CRON_SECRET` (Settings → Secrets and
-     variables → Actions), matching `CRON_SECRET` on Vercel, or
-     `.github/workflows/foe-sweep.yml` skips every run silently.
+- **FOE needs repository secrets `APP_URL` and `CRON_SECRET`** (Settings →
+  Secrets and variables → Actions), matching `CRON_SECRET` on Vercel.
+  Without them `.github/workflows/foe-sweep.yml` skips every run and still
+  reports success — the same trap the older hourly-discovery workflow has.
+  The firm universe seeds itself on the first sweep, so there is no manual
+  setup step beyond the secrets.
 - **No password reset or email verification** — both need an email-sending
   service (e.g. Resend) and API key. Until then a forgotten password can't
   be recovered from the app; signing in with Google avoids that.
